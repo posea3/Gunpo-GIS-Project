@@ -36,13 +36,29 @@ export async function geocodeVworldAddress(
 function getGunpoQueryCandidates(query: string) {
   const normalizedQuery = normalizeGunpoQuery(query);
   const candidates = [normalizedQuery];
-  const buildingAddress = extractBuildingAddress(normalizedQuery);
+  const roadSpacingNormalizedQuery = normalizeRoadAddressSpacing(normalizedQuery);
 
-  if (buildingAddress !== null && buildingAddress !== normalizedQuery) {
+  if (roadSpacingNormalizedQuery !== normalizedQuery) {
+    candidates.push(roadSpacingNormalizedQuery);
+  }
+
+  const addressBeforeDetail = roadSpacingNormalizedQuery.split(/[,(]/u)[0]?.trim();
+
+  if (
+    addressBeforeDetail !== undefined &&
+    addressBeforeDetail.length > 0 &&
+    addressBeforeDetail !== normalizedQuery
+  ) {
+    candidates.push(addressBeforeDetail);
+  }
+
+  const buildingAddress = extractBuildingAddress(roadSpacingNormalizedQuery);
+
+  if (buildingAddress !== null) {
     candidates.push(buildingAddress);
   }
 
-  return candidates;
+  return [...new Set(candidates)];
 }
 
 function normalizeGunpoQuery(query: string) {
@@ -55,9 +71,15 @@ function normalizeGunpoQuery(query: string) {
   return `군포시 ${trimmedQuery}`;
 }
 
+function normalizeRoadAddressSpacing(query: string) {
+  return query
+    .replace(/([가-힣]+로)\s+(\d+번길)/gu, '$1$2')
+    .replace(/(\d+번길)\s*(\d+(?:-\d+)?)/gu, '$1 $2');
+}
+
 function extractBuildingAddress(query: string) {
   const roadAddressMatch = query.match(
-    /^(.*?(?:로|길)\s*\d+(?:-\d+)?)(?:\s|$)/u,
+    /^(.*?(?:로|길)\s*\d+(?:-\d+)?)(?=\s|,|\(|$)/u,
   );
 
   if (roadAddressMatch?.[1] !== undefined) {

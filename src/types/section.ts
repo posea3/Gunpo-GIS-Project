@@ -5,6 +5,7 @@ export type SectionGeometryKind = 'point' | 'area' | 'mixed';
 
 export interface LocationSection {
   id: string;
+  groupId: string | null;
   key: string;
   label: string;
   baseCategory: BuiltInLocationCategory;
@@ -41,6 +42,7 @@ export type SectionByCategory = Partial<
 
 export interface LocationSectionDbRow {
   id: string;
+  group_id?: string | null;
   key: string;
   label: string;
   base_category?: BuiltInLocationCategory | null;

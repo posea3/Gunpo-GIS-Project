@@ -50,10 +50,13 @@ export function LocationLayers({
     type: 'FeatureCollection',
     features: polygonLocations.map(wrapLocationAsFeature),
   };
+  const polygonRenderKey = polygonLocations
+    .map((location) => location.id)
+    .join('-');
 
   return (
     <GeoJSON
-      key={`location-polygons-${revision}`}
+      key={`location-polygons-${revision}-${polygonRenderKey}`}
       data={featureCollection}
       style={(feature) => {
         const location = getLocationFromFeature(feature, locationById);

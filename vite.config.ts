@@ -38,6 +38,10 @@ export default defineConfig({
             return 'supabase';
           }
 
+          if (id.includes('/xlsx/')) {
+            return 'xlsx';
+          }
+
           if (id.includes('/lucide-react/') || id.includes('/zod/')) {
             return 'ui';
           }

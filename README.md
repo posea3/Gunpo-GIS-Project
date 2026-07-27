@@ -305,10 +305,21 @@ DB의 `geojson`에는 `Feature`나 `FeatureCollection`을 저장하지 않고 �
 - Polygon 생성
 - 기존 DB 레이어 편집
 - 삭제 확인 모달을 통한 삭제
+- 섹션별 엑셀 대량 등록
 
 관리자 기능은 지도 오른쪽의 아이콘 도구로 제공됩니다. 핀 추가 또는 영역 추가를 선택해 지도 위에 Marker 또는 Polygon을 그리면 위치 입력 모달이 열리고, 저장 시 `locations.geojson`에는 순수 Geometry만 저장됩니다. 편집과 삭제도 같은 도구 묶음에서 실행합니다.
 
 관리자 목록 패널에서도 각 지역정보 옆의 수정/삭제 버튼으로 기존 데이터를 관리할 수 있습니다.
+
+### 엑셀 대량 등록
+
+관리자 목록 패널의 `엑셀 등록`에서 대상 섹션을 선택한 뒤 `양식 내려받기`로 해당 섹션의 엑셀 양식을 생성합니다. 양식은 공통으로 `이름`, `주소`, `링크`, `발행` 열을 포함하고, 진행 단계가 필요한 섹션에는 `진행 단계` 열을, 나머지 열에는 섹션 관리에서 정의한 수집항목을 추가합니다. 두 번째 행에는 작성 예시가 들어 있습니다.
+
+`이름`과 `주소`는 항상 필수입니다. 위치는 VWorld 주소 검색으로 Point 좌표를 찾으므로 `VITE_VWORLD_API_KEY`가 필요합니다. `발행`은 공개하려면 `예`, 초안으로 저장하려면 `아니오`를 입력합니다. 한 번에 최대 400행을 검증하며, 오류 행이 하나라도 있으면 저장하지 않습니다. Point 또는 혼합 geometry 섹션만 지원하며, Polygon 전용 섹션은 지도 도구로 등록합니다.
+
+등록 방식은 `기존 목록에 추가`와 `선택 섹션 전체 교체` 중에서 고릅니다. 대량 등록은 같은 섹션 안에서 `이름`과 입력한 `주소` 전체가 같은 행을 동일 위치로 판단합니다. 나머지 값까지 모두 같으면 중복으로 제외하고, 하나라도 다르면 해당 위치를 업데이트합니다. 이름이 다르면 같은 주소라도 별도 위치로 등록할 수 있습니다. 전체 교체를 선택하면 엑셀에 없는 해당 섹션의 기존 위치도 삭제되므로 확인 절차가 필요합니다.
+
+각 실행은 하나의 등록 배치로 기록됩니다. `최근 대량 등록`에서 아직 취소하지 않은 배치를 선택해 신규 등록, 업데이트, 전체 교체로 삭제된 목록까지 한 번에 되돌릴 수 있습니다. 이 기능을 사용하려면 [supabase/location_import_batches_idempotent.sql](supabase/location_import_batches_idempotent.sql)을 Supabase SQL Editor에서 실행해야 합니다.
 
 방문자와 관리자는 접이식 위치 목록 또는 지도 위 Marker/Polygon을 선택해 상세 정보 모달을 열 수 있습니다. 모바일 화면에서는 목록이 지도 아래쪽 패널로 열리도록 구성되어 있습니다.
 
@@ -320,19 +331,27 @@ DB의 `geojson`에는 `Feature`나 `FeatureCollection`을 저장하지 않고 �
 
 ## 수집 항목과 섹션 확장
 
+### 분야와 섹션
+
+지도 필터는 2단계입니다. 상단의 **분야**를 선택하면 해당 분야에 속한 위치가 표시되고, 하단의 **섹션**을 선택하면 해당 섹션만 표시됩니다. 관리자 패널의 `분야 관리`에서 분야를 추가·수정·비활성화하고, `새 섹션` 또는 `섹션 관리`에서 각 섹션의 소속 분야를 설정합니다.
+
+기존 Supabase 프로젝트에는 먼저 [supabase/location_groups_idempotent.sql](supabase/location_groups_idempotent.sql)을 SQL Editor에서 실행하세요. 이 SQL은 `location_groups` 테이블, RLS 정책, 기본 분야 및 `location_sections.group_id` 연결을 추가합니다. 이미 연결된 섹션이나 위치 데이터는 삭제하지 않습니다.
+
 현재 DB 스키마는 위치 데이터의 `locations.category`를 `redevelopment`, `development_issue`, `place` 세 값으로 제한합니다. 동시에 섹션 메타데이터와 수집 항목 정의를 관리하기 위해 `location_sections`, `location_section_fields` 테이블을 둡니다.
 
-현재 단계에서는 기존 3개 섹션 안에서 입력 모달에 카테고리별 수집 안내를 표시하고, 관리자 목록 패널의 `섹션 관리` 버튼으로 DB에 등록된 섹션과 수집 항목을 확인할 수 있습니다.
+관리자는 목록 패널의 `새 섹션`과 `섹션 관리`에서 섹션과 수집항목을 정의할 수 있습니다. 섹션 키, Geometry 유형, 진행 단계 필요 여부, 색상과 수집항목은 위치 등록 모달 및 엑셀 대량 등록 양식에 공통으로 반영됩니다.
 
 - 재건축: 추진 단계, 기준일/고시일, 출처, 구역명, 면적, 세대수, 시공사 등
 - 개발호재: 사업명, 사업 유형, 진행 상황, 발표 기관, 예상 일정 등
 - 맛집·관광지: 주소, 영업시간, 대표 메뉴, 연락처, 사진 등
 
-신규 섹션을 실제 위치 등록 카테고리로 사용하려면 다음 단계에서 `locations.section_id`를 추가하고, 기존 `locations.category` check 제약을 섹션 FK 기반으로 전환해야 합니다. 이 전환 전까지 새 섹션은 수집 항목 정의에는 보이지만 위치 등록 카테고리로는 사용하지 않습니다.
+신규 섹션을 실제 위치 등록 카테고리로 사용하려면 `locations.section_id`와 동적 섹션 규칙이 적용되어 있어야 합니다.
 
 기존 Supabase DB에 섹션 테이블만 추가하려면 [supabase/section_schema_idempotent.sql](supabase/section_schema_idempotent.sql)을 Supabase SQL Editor에 붙여넣어 실행합니다. 이 파일은 `user_roles`나 `locations`를 다시 만들지 않고, 섹션 메타데이터 테이블과 기본 수집 항목만 생성/갱신합니다.
 
 섹션 테이블을 적용한 뒤 위치 데이터와 섹션 메타데이터를 연결하려면 [supabase/locations_section_id_idempotent.sql](supabase/locations_section_id_idempotent.sql)을 추가로 실행합니다. 이 SQL은 `locations.section_id`를 추가하고 기존 `category` 값과 같은 key를 가진 섹션으로 연결합니다. 기존 `locations.category` 제약은 유지하므로 앱의 기존 등록/조회 흐름은 그대로 동작합니다.
+
+새 섹션을 `locations.category`에 실제 저장하려면 마지막으로 [supabase/dynamic_sections_idempotent.sql](supabase/dynamic_sections_idempotent.sql)을 실행합니다. 이 SQL은 위치의 섹션 일치, Geometry 유형, 진행 단계 규칙을 DB 트리거로 검증합니다.
 
 ## 보안 주의사항
 

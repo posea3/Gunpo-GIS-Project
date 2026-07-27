@@ -18,12 +18,14 @@ import type {
   LocationSectionWithFields,
   SectionGeometryKind,
 } from '../types/section';
+import type { LocationGroup } from '../types/group';
 import { normalizeOptionalText } from '../utils/geojson';
 
 interface SectionManagerModalProps {
   isOpen: boolean;
   mode: 'create' | 'manage';
   sections: readonly LocationSectionWithFields[];
+  groups: readonly LocationGroup[];
   isLoading: boolean;
   errorMessage: string | null;
   onChanged: () => void;
@@ -37,6 +39,7 @@ type SectionInput = z.infer<typeof sectionSchema>;
 const fieldTypes = ['text', 'textarea', 'number', 'date', 'url'] as const;
 
 const sectionSchema = z.object({
+  groupId: z.string().uuid('소속 분야를 선택하세요.'),
   label: z.string().trim().min(1, '섹션명을 입력하세요.').max(80),
   geometryKind: z.enum(['point', 'area', 'mixed']),
   requiresStatus: z.boolean(),
@@ -56,6 +59,7 @@ export function SectionManagerModal({
   isOpen,
   mode,
   sections,
+  groups,
   isLoading,
   errorMessage,
   onChanged,
@@ -105,6 +109,7 @@ export function SectionManagerModal({
         .from('location_sections')
         .update({
           label: input.label,
+          group_id: input.groupId,
           geometry_kind: input.geometryKind,
           requires_status: input.requiresStatus,
           description: normalizeOptionalText(input.description),
@@ -144,6 +149,7 @@ export function SectionManagerModal({
 
       const { error } = await supabase.from('location_sections').insert({
         key: createSectionKey(parsed.data.label, sections),
+        group_id: parsed.data.groupId,
         label: parsed.data.label,
         geometry_kind: parsed.data.geometryKind,
         requires_status: parsed.data.requiresStatus,
@@ -416,7 +422,7 @@ export function SectionManagerModal({
                   <Plus className="size-4" /> 추가
                 </button>
               </div>
-              <SectionFormFields value={newSection} onChange={setNewSection} disabled={pendingAction !== null} />
+              <SectionFormFields value={newSection} groups={groups} onChange={setNewSection} disabled={pendingAction !== null} />
             </form>
           ) : null}
 
@@ -455,6 +461,7 @@ export function SectionManagerModal({
                 <SectionEditor
                   key={selectedSection.id}
                   section={selectedSection}
+                  groups={groups}
                   isBusy={pendingAction !== null}
                   onSave={saveSection}
                   onDelete={deleteSection}
@@ -484,8 +491,9 @@ export function SectionManagerModal({
   );
 }
 
-function SectionEditor({ section, isBusy, onSave, onDelete, onOpenFields, onValidationError }: {
+function SectionEditor({ section, groups, isBusy, onSave, onDelete, onOpenFields, onValidationError }: {
   section: LocationSectionWithFields;
+  groups: readonly LocationGroup[];
   isBusy: boolean;
   onSave: (section: LocationSectionWithFields, input: SectionInput) => Promise<void>;
   onDelete: (section: LocationSectionWithFields) => Promise<void>;
@@ -519,7 +527,7 @@ function SectionEditor({ section, isBusy, onSave, onDelete, onOpenFields, onVali
             <button type="button" className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-700 disabled:bg-slate-100" disabled={isBusy} aria-label={`${section.label} 삭제`} title="삭제" onClick={() => void onDelete(section)}><Trash2 className="size-4" /></button>
           </div>
         </div>
-        <SectionFormFields value={value} onChange={setValue} disabled={isBusy} />
+        <SectionFormFields value={value} groups={groups} onChange={setValue} disabled={isBusy} />
       </form>
       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
         <div>
@@ -659,14 +667,20 @@ function FieldEditor({ field, disabled, onSave, onDelete, onValidationError }: {
   );
 }
 
-function SectionFormFields({ value, onChange, disabled }: {
+function SectionFormFields({ value, groups, onChange, disabled }: {
   value: SectionInput;
+  groups: readonly LocationGroup[];
   onChange: (value: SectionInput) => void;
   disabled: boolean;
 }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <TextInput label="섹션명" value={value.label} onChange={(label) => onChange({ ...value, label })} disabled={disabled} />
+      <label className="block text-xs font-medium text-slate-700">소속 분야
+        <select className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm" value={value.groupId} onChange={(event) => onChange({ ...value, groupId: event.target.value })} disabled={disabled}>
+          <option value="">분야 선택</option>{groups.filter((group) => group.isActive).map((group) => <option key={group.id} value={group.id}>{group.label}</option>)}
+        </select>
+      </label>
       <label className="block text-xs font-medium text-slate-700">지도 형태
         <select className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm" value={value.geometryKind} onChange={(event) => onChange({ ...value, geometryKind: event.target.value as SectionGeometryKind })} disabled={disabled}>
           <option value="point">점 위치</option><option value="area">구역/면</option><option value="mixed">점과 구역 모두</option>
@@ -717,7 +731,7 @@ function StatusMessage({ message }: { message: string }) {
 }
 
 function newSectionInput(): SectionInput {
-  return { label: '', geometryKind: 'point', requiresStatus: false, description: '', color: '#64748b', isActive: true };
+  return { groupId: '', label: '', geometryKind: 'point', requiresStatus: false, description: '', color: '#64748b', isActive: true };
 }
 
 function newFieldInput(): FieldInput {
@@ -725,7 +739,7 @@ function newFieldInput(): FieldInput {
 }
 
 function toSectionInput(section: LocationSectionWithFields): SectionInput {
-  return { label: section.label, geometryKind: section.geometryKind, requiresStatus: section.requiresStatus, description: section.description ?? '', color: section.color, isActive: section.isActive };
+  return { groupId: section.groupId ?? '', label: section.label, geometryKind: section.geometryKind, requiresStatus: section.requiresStatus, description: section.description ?? '', color: section.color, isActive: section.isActive };
 }
 
 function toFieldInput(field: LocationSectionField): FieldInput {

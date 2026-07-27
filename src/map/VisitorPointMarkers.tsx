@@ -1,7 +1,6 @@
 import L from 'leaflet';
 import type { Point } from 'geojson';
 import { Marker } from 'react-leaflet';
-import MarkerClusterGroup from 'react-leaflet-cluster';
 
 import type { Location } from '../types/location';
 
@@ -21,34 +20,13 @@ export function VisitorPointMarkers({
   const pointLocations = locations.filter(
     (location): location is PointLocation => location.geometry.type === 'Point',
   );
-  const clusteredPoints = pointLocations.filter(
-    (location) => location.category !== 'development_issue',
-  );
-  const standalonePoints = pointLocations.filter(
-    (location) => location.category === 'development_issue',
-  );
-
   return (
     <>
-      <MarkerClusterGroup chunkedLoading>
-        {clusteredPoints.map((location) => (
-          <Marker
-            key={location.id}
-            position={toLatLng(location.geometry.coordinates)}
-            icon={placeIcon}
-            pmIgnore
-            eventHandlers={{
-              click: () => onSelectLocation(location),
-            }}
-          />
-        ))}
-      </MarkerClusterGroup>
-
-      {standalonePoints.map((location) => (
+      {pointLocations.map((location) => (
         <Marker
           key={location.id}
           position={toLatLng(location.geometry.coordinates)}
-          icon={developmentIssueIcon}
+          icon={location.category === 'development_issue' ? developmentIssueIcon : placeIcon}
           pmIgnore
           eventHandlers={{
             click: () => onSelectLocation(location),

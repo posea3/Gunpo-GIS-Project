@@ -155,6 +155,7 @@ function mapSectionRows(
 
   return sectionRows.map((sectionRow) => ({
     id: sectionRow.id,
+    groupId: sectionRow.group_id ?? null,
     key: sectionRow.key,
     label: sectionRow.label,
     baseCategory: getBaseCategory(sectionRow),
