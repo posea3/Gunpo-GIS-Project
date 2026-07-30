@@ -52,6 +52,11 @@ export function useLocations(
   const [state, setState] = useState<UseLocationsState>(initialState);
   const requestSequence = useRef(0);
   const previousAccessScope = useRef<'none' | 'public' | 'admin'>('none');
+  const allLocationsCache = useRef<{
+    scope: 'public' | 'admin';
+    locations: Location[];
+    invalidRows: InvalidLocationRow[];
+  } | null>(null);
   const accessScope = getLocationAccessScope(authRole);
   const fetchDelayMs =
     authRole.status === 'authenticated'
@@ -71,7 +76,7 @@ export function useLocations(
         return;
       }
 
-      const { data, error } = await fetchLocationRows(
+      const { data, error, usesViewportQuery } = await fetchLocationRows(
         locationSelectColumns.join(','),
         nextViewport,
       );
@@ -82,7 +87,7 @@ export function useLocations(
               legacyLocationSelectColumns.join(','),
               nextViewport,
             )
-          : { data, error };
+          : { data, error, usesViewportQuery };
 
       if (requestSequence.current !== requestId) {
         return;
@@ -112,8 +117,57 @@ export function useLocations(
         errorMessage: null,
         revision: current.revision + 1,
       }));
+
+      if (!response.usesViewportQuery || accessScope === 'none') {
+        if (accessScope !== 'none') {
+          allLocationsCache.current = {
+            scope: accessScope,
+            locations: parsed.locations,
+            invalidRows: parsed.invalidRows,
+          };
+        }
+        return;
+      }
+
+      // Keep the first paint small, then make every field available without
+      // forcing the visitor to move the map back through each viewport.
+      const allRowsResponse = await fetchAllLocationRows(
+        locationSelectColumns.join(','),
+      );
+      const allRowsFallbackResponse =
+        allRowsResponse.error !== null &&
+        isMissingSectionIdError(allRowsResponse.error.message)
+          ? await fetchAllLocationRows(legacyLocationSelectColumns.join(','))
+          : allRowsResponse;
+
+      if (
+        requestSequence.current !== requestId ||
+        allRowsFallbackResponse.error !== null
+      ) {
+        return;
+      }
+
+      const allParsed = parseLocationRows(allRowsFallbackResponse.data ?? []);
+
+      if (requestSequence.current !== requestId) {
+        return;
+      }
+
+      allLocationsCache.current = {
+        scope: accessScope,
+        locations: allParsed.locations,
+        invalidRows: allParsed.invalidRows,
+      };
+
+      setState((current) => ({
+        locations: allParsed.locations,
+        invalidRows: allParsed.invalidRows,
+        isLoading: false,
+        errorMessage: null,
+        revision: current.revision + 1,
+      }));
     },
-    [],
+    [accessScope],
   );
 
   const refetch = useCallback(() => {
@@ -123,6 +177,7 @@ export function useLocations(
 
     const requestId = requestSequence.current + 1;
     requestSequence.current = requestId;
+    allLocationsCache.current = null;
 
     setState((current) => ({
       ...current,
@@ -143,6 +198,7 @@ export function useLocations(
 
     if (accessScope === 'none') {
       requestSequence.current += 1;
+      allLocationsCache.current = null;
       setState(initialState);
       return;
     }
@@ -151,8 +207,24 @@ export function useLocations(
       return;
     }
 
+    const cachedLocations = allLocationsCache.current;
+    if (cachedLocations?.scope === accessScope) {
+      setState((current) => ({
+        locations: cachedLocations.locations,
+        invalidRows: cachedLocations.invalidRows,
+        isLoading: false,
+        errorMessage: null,
+        revision: current.revision,
+      }));
+      return;
+    }
+
     const requestId = requestSequence.current + 1;
     requestSequence.current = requestId;
+
+    if (previousScope !== accessScope) {
+      allLocationsCache.current = null;
+    }
 
     setState((current) => ({
       ...current,
@@ -202,6 +274,7 @@ async function fetchLocationRows(
     return {
       data: null,
       error: new Error('Supabase client is not initialized.'),
+      usesViewportQuery: false,
     };
   }
 
@@ -215,7 +288,31 @@ async function fetchLocationRows(
     .select(selectColumns);
 
   if (!isMissingViewportFunctionError(response.error?.message ?? '')) {
-    return response;
+    return {
+      ...response,
+      usesViewportQuery: true,
+    };
+  }
+
+  const fallbackResponse = await supabase
+    .from('locations')
+    .select(selectColumns)
+    .order('category', { ascending: true })
+    .order('name', { ascending: true })
+    .order('updated_at', { ascending: false });
+
+  return {
+    ...fallbackResponse,
+    usesViewportQuery: false,
+  };
+}
+
+async function fetchAllLocationRows(selectColumns: string) {
+  if (supabase === null) {
+    return {
+      data: null,
+      error: new Error('Supabase client is not initialized.'),
+    };
   }
 
   return supabase
