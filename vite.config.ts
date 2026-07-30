@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const githubPagesBase = '/Gunpo-GIS-Project/';
+
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS === 'true' ? githubPagesBase : '/',
   plugins: [react()],
   build: {
     rollupOptions: {

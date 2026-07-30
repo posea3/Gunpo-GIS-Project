@@ -6,3 +6,5 @@ vite.config.d.ts
 .env
 .env.*
 !.env.example
+
+.vercel
