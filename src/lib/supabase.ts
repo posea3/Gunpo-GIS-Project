@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 interface ViteImportMetaEnv {
+  readonly BASE_URL: string;
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VITE_VWORLD_API_KEY?: string;

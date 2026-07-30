@@ -293,7 +293,7 @@ export function App() {
       <header className="z-[700] flex h-[60px] shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 shadow-sm">
         <div className="flex min-w-0 shrink-0 items-center gap-3">
           <img
-            src="/logo.png"
+            src={`${import.meta.env.BASE_URL}logo.png`}
             alt="군포시 로고"
             className="h-11 w-[58px] rounded-sm object-cover"
           />
