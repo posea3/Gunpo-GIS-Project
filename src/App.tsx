@@ -31,6 +31,7 @@ import type {
 import type { SectionByCategory } from './types/section';
 import {
   areLocationViewportsEqual,
+  doesGeometryIntersectViewport,
   type LocationViewport,
 } from './types/locationViewport';
 import { getLocationPhotoUrls } from './utils/locationPhotos';
@@ -107,6 +108,9 @@ export function App() {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('all');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('all');
+  const [panelLocationScope, setPanelLocationScope] = useState<
+    'viewport' | 'filter'
+  >('viewport');
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [panelRightEdge, setPanelRightEdge] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth >= 768 ? 372 : 0,
@@ -161,6 +165,17 @@ export function App() {
     [locations, sectionById, selectedSectionFilter],
   );
   const filteredLocations = useMemo(() => selectedGroupFilter === 'all' ? visibleLocations : visibleLocations.filter((location) => sectionById.get(location.sectionId ?? '')?.groupId === selectedGroupFilter), [visibleLocations, selectedGroupFilter, sectionById]);
+  const viewportFilteredLocations = useMemo(
+    () =>
+      filteredLocations.filter((location) =>
+        doesGeometryIntersectViewport(location.geometry, locationViewport),
+      ),
+    [filteredLocations, locationViewport],
+  );
+  const panelLocations =
+    panelLocationScope === 'viewport'
+      ? viewportFilteredLocations
+      : filteredLocations;
 
   useEffect(() => {
     if (!isAdmin) {
@@ -450,7 +465,10 @@ export function App() {
 
         {isPanelOpen ? (
           <LocationExplorerPanel
-            locations={filteredLocations}
+            locations={panelLocations}
+            viewportLocationCount={viewportFilteredLocations.length}
+            filteredLocationCount={filteredLocations.length}
+            locationScope={panelLocationScope}
             allLocationCount={locations.length}
             selectedFilterLabel={getCurrentFilterLabel(
               selectedGroupFilter,
@@ -479,6 +497,7 @@ export function App() {
             onOpenSectionManager={() => setIsSectionManagerOpen(true)}
             onOpenGroupManager={() => setIsGroupManagerOpen(true)}
             onOpenBulkImport={() => setIsBulkImportOpen(true)}
+            onLocationScopeChange={setPanelLocationScope}
             onClose={() => setIsPanelOpen(false)}
             panelRef={panelRef}
             sectionsByCategory={sectionsByCategory}
@@ -615,6 +634,9 @@ function MapLoadingFallback() {
 
 function LocationExplorerPanel({
   locations,
+  viewportLocationCount,
+  filteredLocationCount,
+  locationScope,
   allLocationCount,
   selectedFilterLabel,
   isAdmin,
@@ -629,11 +651,15 @@ function LocationExplorerPanel({
   onOpenSectionManager,
   onOpenGroupManager,
   onOpenBulkImport,
+  onLocationScopeChange,
   onClose,
   panelRef,
   sectionsByCategory,
 }: {
   locations: readonly Location[];
+  viewportLocationCount: number;
+  filteredLocationCount: number;
+  locationScope: 'viewport' | 'filter';
   allLocationCount: number;
   selectedFilterLabel: string;
   isAdmin: boolean;
@@ -648,6 +674,7 @@ function LocationExplorerPanel({
   onOpenSectionManager: () => void;
   onOpenGroupManager: () => void;
   onOpenBulkImport: () => void;
+  onLocationScopeChange: (scope: 'viewport' | 'filter') => void;
   onClose: () => void;
   panelRef: RefObject<HTMLElement>;
   sectionsByCategory: SectionByCategory;
@@ -696,6 +723,39 @@ function LocationExplorerPanel({
         <p className="mt-2 text-xs text-slate-500">
           현재 필터: {selectedFilterLabel}
         </p>
+
+        <div
+          className="mt-3 grid grid-cols-2 rounded-md border border-slate-200 bg-slate-50 p-1"
+          role="tablist"
+          aria-label="Location list range"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={locationScope === 'viewport'}
+            className={`h-8 rounded px-2 text-xs font-semibold transition-colors ${
+              locationScope === 'viewport'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-950'
+            }`}
+            onClick={() => onLocationScopeChange('viewport')}
+          >
+            현재 화면 {viewportLocationCount}개
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={locationScope === 'filter'}
+            className={`h-8 rounded px-2 text-xs font-semibold transition-colors ${
+              locationScope === 'filter'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-950'
+            }`}
+            onClick={() => onLocationScopeChange('filter')}
+          >
+            현재 필터 전체 {filteredLocationCount}개
+          </button>
+        </div>
 
         {isAdmin ? (
           <div className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">

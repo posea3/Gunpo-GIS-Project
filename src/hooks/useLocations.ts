@@ -52,16 +52,66 @@ export function useLocations(
   const [state, setState] = useState<UseLocationsState>(initialState);
   const requestSequence = useRef(0);
   const previousAccessScope = useRef<'none' | 'public' | 'admin'>('none');
+  const catalogRequestSequence = useRef(0);
+  const catalogLoadingScope = useRef<'public' | 'admin' | null>(null);
   const allLocationsCache = useRef<{
     scope: 'public' | 'admin';
     locations: Location[];
     invalidRows: InvalidLocationRow[];
   } | null>(null);
   const accessScope = getLocationAccessScope(authRole);
+  const accessScopeRef = useRef(accessScope);
+  accessScopeRef.current = accessScope;
   const fetchDelayMs =
     authRole.status === 'authenticated'
       ? authenticatedRoleResolutionDelayMs
       : 0;
+
+  const hydrateAllLocations = useCallback(async (scope: 'public' | 'admin') => {
+    if (
+      allLocationsCache.current?.scope === scope ||
+      catalogLoadingScope.current === scope
+    ) {
+      return;
+    }
+
+    const catalogRequestId = catalogRequestSequence.current;
+    catalogLoadingScope.current = scope;
+
+    const response = await fetchAllLocationRows(locationSelectColumns.join(','));
+    const fallbackResponse =
+      response.error !== null && isMissingSectionIdError(response.error.message)
+        ? await fetchAllLocationRows(legacyLocationSelectColumns.join(','))
+        : response;
+
+    if (
+      catalogRequestSequence.current !== catalogRequestId ||
+      accessScopeRef.current !== scope
+    ) {
+      return;
+    }
+
+    catalogLoadingScope.current = null;
+
+    if (fallbackResponse.error !== null) {
+      return;
+    }
+
+    const parsed = parseLocationRows(fallbackResponse.data ?? []);
+    allLocationsCache.current = {
+      scope,
+      locations: parsed.locations,
+      invalidRows: parsed.invalidRows,
+    };
+
+    setState((current) => ({
+      locations: parsed.locations,
+      invalidRows: parsed.invalidRows,
+      isLoading: false,
+      errorMessage: null,
+      revision: current.revision + 1,
+    }));
+  }, []);
 
   const fetchLocations = useCallback(
     async (requestId: number, nextViewport: LocationViewport) => {
@@ -130,44 +180,10 @@ export function useLocations(
       }
 
       // Keep the first paint small, then make every field available without
-      // forcing the visitor to move the map back through each viewport.
-      const allRowsResponse = await fetchAllLocationRows(
-        locationSelectColumns.join(','),
-      );
-      const allRowsFallbackResponse =
-        allRowsResponse.error !== null &&
-        isMissingSectionIdError(allRowsResponse.error.message)
-          ? await fetchAllLocationRows(legacyLocationSelectColumns.join(','))
-          : allRowsResponse;
-
-      if (
-        requestSequence.current !== requestId ||
-        allRowsFallbackResponse.error !== null
-      ) {
-        return;
-      }
-
-      const allParsed = parseLocationRows(allRowsFallbackResponse.data ?? []);
-
-      if (requestSequence.current !== requestId) {
-        return;
-      }
-
-      allLocationsCache.current = {
-        scope: accessScope,
-        locations: allParsed.locations,
-        invalidRows: allParsed.invalidRows,
-      };
-
-      setState((current) => ({
-        locations: allParsed.locations,
-        invalidRows: allParsed.invalidRows,
-        isLoading: false,
-        errorMessage: null,
-        revision: current.revision + 1,
-      }));
+      // tying the background catalog request to later map movement events.
+      void hydrateAllLocations(accessScope);
     },
-    [accessScope],
+    [accessScope, hydrateAllLocations],
   );
 
   const refetch = useCallback(() => {
@@ -177,6 +193,8 @@ export function useLocations(
 
     const requestId = requestSequence.current + 1;
     requestSequence.current = requestId;
+    catalogRequestSequence.current += 1;
+    catalogLoadingScope.current = null;
     allLocationsCache.current = null;
 
     setState((current) => ({
@@ -198,6 +216,8 @@ export function useLocations(
 
     if (accessScope === 'none') {
       requestSequence.current += 1;
+      catalogRequestSequence.current += 1;
+      catalogLoadingScope.current = null;
       allLocationsCache.current = null;
       setState(initialState);
       return;
@@ -205,6 +225,12 @@ export function useLocations(
 
     if (viewport === null) {
       return;
+    }
+
+    if (previousScope !== accessScope) {
+      catalogRequestSequence.current += 1;
+      catalogLoadingScope.current = null;
+      allLocationsCache.current = null;
     }
 
     const cachedLocations = allLocationsCache.current;
@@ -221,10 +247,6 @@ export function useLocations(
 
     const requestId = requestSequence.current + 1;
     requestSequence.current = requestId;
-
-    if (previousScope !== accessScope) {
-      allLocationsCache.current = null;
-    }
 
     setState((current) => ({
       ...current,
