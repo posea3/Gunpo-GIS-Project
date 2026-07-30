@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Marker } from 'react-leaflet';
 
 import type { Location } from '../types/location';
+import type { LocationSectionWithFields } from '../types/section';
 
 interface VisitorPointMarkersProps {
   locations: readonly Location[];
+  sections: readonly LocationSectionWithFields[];
   onSelectLocation: (location: Location) => void;
 }
 
@@ -18,6 +20,7 @@ const markerRenderBatchSize = 75;
 
 export function VisitorPointMarkers({
   locations,
+  sections,
   onSelectLocation,
 }: VisitorPointMarkersProps) {
   const pointLocations = useMemo(
@@ -28,6 +31,16 @@ export function VisitorPointMarkers({
     [locations],
   );
   const [visibleMarkerCount, setVisibleMarkerCount] = useState(0);
+  const sectionIconsById = useMemo(
+    () =>
+      new Map(
+        sections.map((section) => [
+          section.id,
+          createSectionPointIcon(section.color),
+        ]),
+      ),
+    [sections],
+  );
 
   useEffect(() => {
     let nextMarkerCount = Math.min(pointLocations.length, markerRenderBatchSize);
@@ -67,7 +80,14 @@ export function VisitorPointMarkers({
         <Marker
           key={location.id}
           position={toLatLng(location.geometry.coordinates)}
-          icon={location.category === 'development_issue' ? developmentIssueIcon : placeIcon}
+          icon={
+            (location.sectionId === null
+              ? undefined
+              : sectionIconsById.get(location.sectionId)) ??
+            (location.category === 'development_issue'
+              ? developmentIssueIcon
+              : placeIcon)
+          }
           pmIgnore
           eventHandlers={{
             click: () => onSelectLocation(location),
@@ -95,3 +115,14 @@ const placeIcon = L.divIcon({
   iconSize: [18, 18],
   iconAnchor: [9, 9],
 });
+
+function createSectionPointIcon(color: string) {
+  const safeColor = /^#[0-9a-f]{6}$/i.test(color) ? color : '#64748b';
+
+  return L.divIcon({
+    className: 'section-marker',
+    html: `<span style="background-color: ${safeColor}"></span>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+}

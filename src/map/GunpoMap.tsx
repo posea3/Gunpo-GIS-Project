@@ -145,6 +145,7 @@ export function GunpoMap({
         ) : (
           <VisitorPointMarkers
             locations={locations}
+            sections={sections}
             onSelectLocation={onSelectLocation}
           />
         )}
