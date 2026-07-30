@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GeoJsonObject } from 'geojson';
 import L, { type Layer } from 'leaflet';
 import { useMap } from 'react-leaflet';
 
-import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
-import { LocationEditModal } from '../components/LocationEditModal';
 import { supabase, vworldApiKey } from '../lib/supabase';
 import type {
   Location,
@@ -24,6 +22,17 @@ import {
 import { geocodeVworldAddress, reverseGeocodeVworldPoint } from '../utils/vworld';
 import { registerLayerId, resolveLayerId } from './geomanLayerRegistry';
 import { ensureGeoman } from './setupLeaflet';
+
+const ConfirmDeleteModal = lazy(() =>
+  import('../components/ConfirmDeleteModal').then((module) => ({
+    default: module.ConfirmDeleteModal,
+  })),
+);
+const LocationEditModal = lazy(() =>
+  import('../components/LocationEditModal').then((module) => ({
+    default: module.LocationEditModal,
+  })),
+);
 
 interface GeomanControllerProps {
   isAdmin: boolean;
@@ -467,26 +476,32 @@ export function GeomanController({
   return (
     <>
       {pendingCreate !== null ? (
-        <LocationEditModal
-          isOpen
-          geometry={pendingCreate.geometry}
-          initialLocation={pendingCreate.initialLocation}
-          sections={sections}
-          sectionsByCategory={sectionsByCategory}
-          isSubmitting={isCreateSaving}
-          submitErrorMessage={createErrorMessage}
-          onCancel={handleCreateCancel}
-          onSave={handleCreateSave}
-        />
+        <Suspense fallback={null}>
+          <LocationEditModal
+            isOpen
+            geometry={pendingCreate.geometry}
+            initialLocation={pendingCreate.initialLocation}
+            sections={sections}
+            sectionsByCategory={sectionsByCategory}
+            isSubmitting={isCreateSaving}
+            submitErrorMessage={createErrorMessage}
+            onCancel={handleCreateCancel}
+            onSave={handleCreateSave}
+          />
+        </Suspense>
       ) : null}
 
-      <ConfirmDeleteModal
-        isOpen={pendingDelete !== null}
-        targetName={pendingDelete?.location.name ?? ''}
-        isDeleting={isDeleting}
-        onCancel={handleDeleteCancel}
-        onConfirm={handleDeleteConfirm}
-      />
+      {pendingDelete !== null ? (
+        <Suspense fallback={null}>
+          <ConfirmDeleteModal
+            isOpen
+            targetName={pendingDelete.location.name}
+            isDeleting={isDeleting}
+            onCancel={handleDeleteCancel}
+            onConfirm={handleDeleteConfirm}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }

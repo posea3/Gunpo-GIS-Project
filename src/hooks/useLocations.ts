@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
 import type { Location } from '../types/location';
+import type { LocationViewport } from '../types/locationViewport';
 import { parseLocationRows, type InvalidLocationRow } from '../utils/geojson';
 import type { AuthRoleState } from './useAuthRole';
 
@@ -44,7 +45,10 @@ const legacyLocationSelectColumns = locationSelectColumns.filter(
   (column) => column !== 'section_id',
 );
 
-export function useLocations(authRole: AuthRoleState) {
+export function useLocations(
+  authRole: AuthRoleState,
+  viewport: LocationViewport | null,
+) {
   const [state, setState] = useState<UseLocationsState>(initialState);
   const requestSequence = useRef(0);
   const previousAccessScope = useRef<'none' | 'public' | 'admin'>('none');
@@ -55,7 +59,7 @@ export function useLocations(authRole: AuthRoleState) {
       : 0;
 
   const fetchLocations = useCallback(
-    async (requestId: number) => {
+    async (requestId: number, nextViewport: LocationViewport) => {
       if (supabase === null) {
         setState((current) => ({
           locations: [],
@@ -69,11 +73,15 @@ export function useLocations(authRole: AuthRoleState) {
 
       const { data, error } = await fetchLocationRows(
         locationSelectColumns.join(','),
+        nextViewport,
       );
 
       const response =
         error !== null && isMissingSectionIdError(error.message)
-          ? await fetchLocationRows(legacyLocationSelectColumns.join(','))
+          ? await fetchLocationRows(
+              legacyLocationSelectColumns.join(','),
+              nextViewport,
+            )
           : { data, error };
 
       if (requestSequence.current !== requestId) {
@@ -109,7 +117,7 @@ export function useLocations(authRole: AuthRoleState) {
   );
 
   const refetch = useCallback(() => {
-    if (accessScope === 'none') {
+    if (accessScope === 'none' || viewport === null) {
       return;
     }
 
@@ -123,11 +131,11 @@ export function useLocations(authRole: AuthRoleState) {
     }));
 
     const timeoutId = window.setTimeout(() => {
-      void fetchLocations(requestId);
+      void fetchLocations(requestId, viewport);
     }, fetchDelayMs);
 
     return () => window.clearTimeout(timeoutId);
-  }, [accessScope, fetchDelayMs, fetchLocations]);
+  }, [accessScope, fetchDelayMs, fetchLocations, viewport]);
 
   useEffect(() => {
     const previousScope = previousAccessScope.current;
@@ -136,6 +144,10 @@ export function useLocations(authRole: AuthRoleState) {
     if (accessScope === 'none') {
       requestSequence.current += 1;
       setState(initialState);
+      return;
+    }
+
+    if (viewport === null) {
       return;
     }
 
@@ -158,8 +170,8 @@ export function useLocations(authRole: AuthRoleState) {
       errorMessage: null,
     }));
 
-    void fetchLocations(requestId);
-  }, [accessScope, fetchLocations]);
+    void fetchLocations(requestId, viewport);
+  }, [accessScope, fetchLocations, viewport]);
 
   return {
     ...state,
@@ -182,12 +194,28 @@ function getLocationAccessScope(authRole: AuthRoleState) {
   return 'none' as const;
 }
 
-async function fetchLocationRows(selectColumns: string) {
+async function fetchLocationRows(
+  selectColumns: string,
+  viewport: LocationViewport,
+) {
   if (supabase === null) {
     return {
       data: null,
       error: new Error('Supabase client is not initialized.'),
     };
+  }
+
+  const response = await supabase
+    .rpc('get_locations_in_bounds', {
+      p_west: viewport.west,
+      p_south: viewport.south,
+      p_east: viewport.east,
+      p_north: viewport.north,
+    })
+    .select(selectColumns);
+
+  if (!isMissingViewportFunctionError(response.error?.message ?? '')) {
+    return response;
   }
 
   return supabase
@@ -201,6 +229,13 @@ async function fetchLocationRows(selectColumns: string) {
 function isMissingSectionIdError(message: string) {
   return (
     message.includes('section_id') &&
+    (message.includes('does not exist') || message.includes('schema cache'))
+  );
+}
+
+function isMissingViewportFunctionError(message: string) {
+  return (
+    message.includes('get_locations_in_bounds') &&
     (message.includes('does not exist') || message.includes('schema cache'))
   );
 }

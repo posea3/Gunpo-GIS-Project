@@ -1,13 +1,21 @@
 import { Check, Edit3, MapPin, Pentagon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { GeoJSON, MapContainer, Polygon, TileLayer, useMap } from 'react-leaflet';
+import {
+  GeoJSON,
+  MapContainer,
+  Polygon,
+  TileLayer,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
 import type { Geometry } from 'geojson';
 
 import { vworldApiKey } from '../lib/supabase';
 import type { Location, LocationCreateDraft } from '../types/location';
+import type { LocationViewport } from '../types/locationViewport';
 import type { LocationSectionWithFields, SectionByCategory } from '../types/section';
 import { AdminPointMarkers } from './AdminPointMarkers';
 import { GeomanController } from './GeomanController';
@@ -28,10 +36,11 @@ interface GunpoMapProps {
   onExternalCreateConsumed?: () => void;
   sections?: readonly LocationSectionWithFields[];
   sectionsByCategory?: SectionByCategory;
+  onViewportChange: (viewport: LocationViewport) => void;
 }
 
-const gunpoCenter: [number, number] = [37.3615, 126.9352];
-const defaultZoom = 14;
+const gunpoCityHall: [number, number] = [37.3615, 126.9352];
+const defaultZoom = 15;
 const minZoom = 14;
 const maxZoom = 19;
 const gunpoViewBounds: LatLngBoundsExpression = [
@@ -67,6 +76,7 @@ export function GunpoMap({
   onExternalCreateConsumed,
   sections = [],
   sectionsByCategory = {},
+  onViewportChange,
 }: GunpoMapProps) {
   const hasVworldApiKey = vworldApiKey !== null;
   const [map, setMap] = useState<GeomanControlMap | null>(null);
@@ -80,7 +90,7 @@ export function GunpoMap({
   return (
     <section className="relative h-full min-h-0 w-full overflow-hidden bg-slate-100">
       <MapContainer
-        center={gunpoCenter}
+        center={gunpoCityHall}
         zoom={defaultZoom}
         minZoom={minZoom}
         maxZoom={maxZoom}
@@ -98,6 +108,7 @@ export function GunpoMap({
           }}
         />
         <MapViewportGuard panelOffset={panelOffset} />
+        <MapViewportReporter onViewportChange={onViewportChange} />
         <MapZoomControl />
 
         {hasVworldApiKey ? (
@@ -180,6 +191,39 @@ export function GunpoMap({
 
 function noop() {
   return undefined;
+}
+
+function MapViewportReporter({
+  onViewportChange,
+}: {
+  onViewportChange: (viewport: LocationViewport) => void;
+}) {
+  const map = useMap();
+
+  const reportViewport = () => {
+    const bounds = map.getBounds();
+    onViewportChange({
+      west: Number(bounds.getWest().toFixed(6)),
+      south: Number(bounds.getSouth().toFixed(6)),
+      east: Number(bounds.getEast().toFixed(6)),
+      north: Number(bounds.getNorth().toFixed(6)),
+    });
+  };
+
+  useEffect(() => {
+    reportViewport();
+    map.on('moveend', reportViewport);
+
+    return () => {
+      map.off('moveend', reportViewport);
+    };
+  }, [map, onViewportChange]);
+
+  useMapEvents({
+    resize: reportViewport,
+  });
+
+  return null;
 }
 
 function MapAdminToolbar({
@@ -394,6 +438,7 @@ function MapInstanceBridge({
 
 function MapViewportGuard({ panelOffset }: { panelOffset: number }) {
   const map = useMap();
+  const previousPanelOffsetRef = useRef(panelOffset);
 
   useEffect(() => {
     const keepInsideBounds = () => {
@@ -402,11 +447,18 @@ function MapViewportGuard({ panelOffset }: { panelOffset: number }) {
 
     map.setMaxBounds(gunpoViewBounds);
     map.setMinZoom(minZoom);
-    map.fitBounds(gunpoViewBounds, {
-      animate: false,
-      paddingTopLeft: [getResponsivePanelOffset(panelOffset), 0],
-      paddingBottomRight: [80, 80],
-    });
+
+    const previousPanelOffset = getResponsivePanelOffset(
+      previousPanelOffsetRef.current,
+    );
+    const nextPanelOffset = getResponsivePanelOffset(panelOffset);
+    const panelOffsetDelta = nextPanelOffset - previousPanelOffset;
+
+    if (panelOffsetDelta !== 0) {
+      map.panBy([-panelOffsetDelta / 2, 0], { animate: false });
+    }
+
+    previousPanelOffsetRef.current = panelOffset;
     map.on('drag', keepInsideBounds);
     map.on('zoomend', keepInsideBounds);
 

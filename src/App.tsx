@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import {
   ChevronLeft,
@@ -15,12 +15,6 @@ import {
   X,
 } from 'lucide-react';
 
-import { ConfirmDeleteModal } from './components/ConfirmDeleteModal';
-import { GroupManagerModal } from './components/GroupManagerModal';
-import { LocationDetailModal } from './components/LocationDetailModal';
-import { LocationEditModal } from './components/LocationEditModal';
-import { LoginModal } from './components/LoginModal';
-import { SectionManagerModal } from './components/SectionManagerModal';
 import { useAuthRole } from './hooks/useAuthRole';
 import { useLocations } from './hooks/useLocations';
 import { useLocationSections } from './hooks/useLocationSections';
@@ -35,6 +29,10 @@ import type {
   LocationUpdateInput,
 } from './types/location';
 import type { SectionByCategory } from './types/section';
+import {
+  areLocationViewportsEqual,
+  type LocationViewport,
+} from './types/locationViewport';
 import { getLocationPhotoUrls } from './utils/locationPhotos';
 import {
   isCompleteLocationInput,
@@ -49,10 +47,43 @@ const BulkLocationImportModal = lazy(() =>
   })),
 );
 
+const ConfirmDeleteModal = lazy(() =>
+  import('./components/ConfirmDeleteModal').then((module) => ({
+    default: module.ConfirmDeleteModal,
+  })),
+);
+const GroupManagerModal = lazy(() =>
+  import('./components/GroupManagerModal').then((module) => ({
+    default: module.GroupManagerModal,
+  })),
+);
+const LocationDetailModal = lazy(() =>
+  import('./components/LocationDetailModal').then((module) => ({
+    default: module.LocationDetailModal,
+  })),
+);
+const LocationEditModal = lazy(() =>
+  import('./components/LocationEditModal').then((module) => ({
+    default: module.LocationEditModal,
+  })),
+);
+const LoginModal = lazy(() =>
+  import('./components/LoginModal').then((module) => ({
+    default: module.LoginModal,
+  })),
+);
+const SectionManagerModal = lazy(() =>
+  import('./components/SectionManagerModal').then((module) => ({
+    default: module.SectionManagerModal,
+  })),
+);
+
 const initialLocationListPageSize = 50;
 
 export function App() {
   const { authRole, signOut } = useAuthRole();
+  const [locationViewport, setLocationViewport] =
+    useState<LocationViewport | null>(null);
   const {
     locations,
     invalidRows,
@@ -60,7 +91,7 @@ export function App() {
     errorMessage: locationsErrorMessage,
     revision,
     refetch,
-  } = useLocations(authRole);
+  } = useLocations(authRole, locationViewport);
   const {
     sections,
     sectionsByCategory,
@@ -77,7 +108,9 @@ export function App() {
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('all');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('all');
   const [isPanelOpen, setIsPanelOpen] = useState(true);
-  const [panelRightEdge, setPanelRightEdge] = useState(0);
+  const [panelRightEdge, setPanelRightEdge] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 768 ? 372 : 0,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -89,6 +122,13 @@ export function App() {
   const [editErrorMessage, setEditErrorMessage] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
+  const handleViewportChange = useCallback((nextViewport: LocationViewport) => {
+    setLocationViewport((currentViewport) =>
+      areLocationViewportsEqual(currentViewport, nextViewport)
+        ? currentViewport
+        : nextViewport,
+    );
+  }, []);
   const isAdmin = authRole.status === 'admin' && authRole.isAdmin;
   const sectionById = useMemo(
     () => new Map(sections.map((section) => [section.id, section])),
@@ -369,6 +409,7 @@ export function App() {
             onExternalCreateConsumed={() => setExternalCreateDraft(null)}
             sections={sections}
             sectionsByCategory={sectionsByCategory}
+            onViewportChange={handleViewportChange}
         />
 
         <div className="pointer-events-none absolute left-3 top-3 z-[650] flex flex-wrap gap-2">
@@ -458,63 +499,90 @@ export function App() {
         ) : null}
       </section>
 
-      <LoginModal
-        isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
-      />
-      <LocationDetailModal
-        location={selectedLocation}
-        sections={sections}
-        isAdmin={isAdmin}
-        onEdit={
-          isAdmin && selectedLocation !== null
-            ? () => {
-              setEditErrorMessage(null);
-              setEditingLocation(selectedLocation);
-              setSelectedLocation(null);
-            }
-            : undefined
-        }
-        onDelete={
-          isAdmin && selectedLocation !== null
-            ? () => {
-              setDeletingLocation(selectedLocation);
-              setSelectedLocation(null);
-            }
-            : undefined
-        }
-        onClose={() => setSelectedLocation(null)}
-      />
-      <GroupManagerModal isOpen={isGroupManagerOpen} groups={groups} onChanged={() => { refetchGroups(); refetchSections(); }} onClose={() => setIsGroupManagerOpen(false)} />
-      {editingLocation !== null ? (
-        <LocationEditModal
-          isOpen
-          geometry={editingLocation.geometry}
-          location={editingLocation}
-          sections={sections}
-          sectionsByCategory={sectionsByCategory}
-          isSubmitting={isEditSaving}
-          submitErrorMessage={editErrorMessage}
-          onCancel={() => setEditingLocation(null)}
-          onSave={handleEditSave}
-        />
+      {isLoginOpen ? (
+        <Suspense fallback={null}>
+          <LoginModal isOpen onClose={() => setIsLoginOpen(false)} />
+        </Suspense>
       ) : null}
-      <ConfirmDeleteModal
-        isOpen={deletingLocation !== null}
-        targetName={deletingLocation?.name ?? ''}
-        isDeleting={isDeleting}
-        onCancel={() => setDeletingLocation(null)}
-        onConfirm={handleDeleteConfirm}
-      />
-      <SectionManagerModal
-        isOpen={isSectionManagerOpen}
-        sections={sections}
-        groups={groups}
-        isLoading={isSectionsLoading}
-        errorMessage={sectionsErrorMessage}
-        onChanged={refetchSections}
-        onClose={() => setIsSectionManagerOpen(false)}
-      />
+      {selectedLocation !== null ? (
+        <Suspense fallback={null}>
+          <LocationDetailModal
+            location={selectedLocation}
+            sections={sections}
+            isAdmin={isAdmin}
+            onEdit={
+              isAdmin
+                ? () => {
+                    setEditErrorMessage(null);
+                    setEditingLocation(selectedLocation);
+                    setSelectedLocation(null);
+                  }
+                : undefined
+            }
+            onDelete={
+              isAdmin
+                ? () => {
+                    setDeletingLocation(selectedLocation);
+                    setSelectedLocation(null);
+                  }
+                : undefined
+            }
+            onClose={() => setSelectedLocation(null)}
+          />
+        </Suspense>
+      ) : null}
+      {isGroupManagerOpen ? (
+        <Suspense fallback={null}>
+          <GroupManagerModal
+            isOpen
+            groups={groups}
+            onChanged={() => {
+              refetchGroups();
+              refetchSections();
+            }}
+            onClose={() => setIsGroupManagerOpen(false)}
+          />
+        </Suspense>
+      ) : null}
+      {editingLocation !== null ? (
+        <Suspense fallback={null}>
+          <LocationEditModal
+            isOpen
+            geometry={editingLocation.geometry}
+            location={editingLocation}
+            sections={sections}
+            sectionsByCategory={sectionsByCategory}
+            isSubmitting={isEditSaving}
+            submitErrorMessage={editErrorMessage}
+            onCancel={() => setEditingLocation(null)}
+            onSave={handleEditSave}
+          />
+        </Suspense>
+      ) : null}
+      {deletingLocation !== null ? (
+        <Suspense fallback={null}>
+          <ConfirmDeleteModal
+            isOpen
+            targetName={deletingLocation.name}
+            isDeleting={isDeleting}
+            onCancel={() => setDeletingLocation(null)}
+            onConfirm={handleDeleteConfirm}
+          />
+        </Suspense>
+      ) : null}
+      {isSectionManagerOpen ? (
+        <Suspense fallback={null}>
+          <SectionManagerModal
+            isOpen
+            sections={sections}
+            groups={groups}
+            isLoading={isSectionsLoading}
+            errorMessage={sectionsErrorMessage}
+            onChanged={refetchSections}
+            onClose={() => setIsSectionManagerOpen(false)}
+          />
+        </Suspense>
+      ) : null}
       {isAdmin && isBulkImportOpen ? (
         <Suspense fallback={null}>
           <BulkLocationImportModal
