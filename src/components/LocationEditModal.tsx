@@ -11,6 +11,7 @@ import type {
   RedevelopmentStatus,
   SupportedGeometry,
 } from '../types/location';
+import { redevelopmentStatuses } from '../types/location';
 import type {
   LocationSectionField,
   LocationSectionWithFields,
@@ -44,20 +45,22 @@ type FormFieldName =
   | 'sourceUrl'
   | 'details';
 
-const redevelopmentStatuses = [
+const legacyRedevelopmentStatuses = [
   '추진위승인',
   '조합설립',
   '사업시행인가',
   '관리처분인가',
   '착공',
   '준공',
-] as const satisfies readonly RedevelopmentStatus[];
+] as const;
 
 const categoryLabels: Record<string, string> = {
   redevelopment: '재건축',
   development_issue: '개발 호재',
   place: '맛집·관광지',
 };
+
+const sourceLinkLabelKey = '__source_link_label';
 
 const editFormSchema = z
   .object({
@@ -78,7 +81,7 @@ const editFormSchema = z
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['status'],
-        message: '재건축 단계는 필수입니다.',
+        message: '재건축/재개발/리모델링 진행 단계는 필수입니다.',
       });
     }
 
@@ -164,7 +167,9 @@ export function LocationEditModal({
     getInitialDetailText(location?.details ?? initialLocation?.details, '주소'),
   );
   const [photoFiles, setPhotoFiles] = useState<readonly File[]>([]);
-  const [sourceUrl, setSourceUrl] = useState(location?.sourceUrl ?? '');
+  const [sourceUrl, setSourceUrl] = useState(
+    getInitialSourceLinkText(location?.sourceUrl, location?.details),
+  );
   const [details, setDetails] = useState(formatInitialDetails(location?.details));
   const [sectionFieldValues, setSectionFieldValues] = useState<Record<string, string>>(
     () => getInitialSectionFieldValues(location?.details ?? initialLocation?.details),
@@ -194,7 +199,7 @@ export function LocationEditModal({
     setIsPublished(location?.isPublished ?? false);
     setAddress(getInitialDetailText(location?.details ?? initialLocation?.details, '주소'));
     setPhotoFiles([]);
-    setSourceUrl(location?.sourceUrl ?? '');
+    setSourceUrl(getInitialSourceLinkText(location?.sourceUrl, location?.details));
     setDetails(formatInitialDetails(location?.details ?? initialLocation?.details));
     setSectionFieldValues(
       getInitialSectionFieldValues(location?.details ?? initialLocation?.details),
@@ -224,6 +229,14 @@ export function LocationEditModal({
       return;
     }
 
+    const sourceLink = parseSourceLinkInput(sourceUrl);
+    if (sourceLink === null) {
+      setFieldErrors({
+        sourceUrl: 'HTTP/HTTPS URL 또는 [설명](https://주소) 형식으로 입력하세요.',
+      });
+      return;
+    }
+
     const parsed = editFormSchema.safeParse({
       name,
       category,
@@ -231,7 +244,7 @@ export function LocationEditModal({
       status: selectedSection?.requiresStatus === true && status !== '' ? status : null,
       isPublished,
       address,
-      sourceUrl,
+      sourceUrl: sourceLink.url ?? '',
       details,
     });
 
@@ -251,7 +264,7 @@ export function LocationEditModal({
     }
 
     const normalizedDetails = {
-      ...parseDetails(parsed.data.details),
+      ...withSourceLinkLabel(parseDetails(parsed.data.details), sourceLink.label),
       ...toSectionFieldDetails(selectedSection?.fields ?? [], sectionFieldValues),
       ...toAddressDetail(parsed.data.address),
     };
@@ -364,7 +377,7 @@ export function LocationEditModal({
 
           {selectedSection?.requiresStatus === true || category === 'redevelopment' ? (
             <label className="block text-sm font-medium text-slate-700">
-              재건축 단계 <RequiredMark />
+              재건축/재개발/리모델링 진행 단계 <RequiredMark />
               <select
                 className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2"
                 value={status}
@@ -433,7 +446,7 @@ export function LocationEditModal({
             onChange={setSourceUrl}
             error={fieldErrors.sourceUrl}
             disabled={isSubmitting}
-            description="출처가 웹페이지라면 HTTP/HTTPS 주소를 입력합니다."
+            description="HTTP/HTTPS 주소 또는 [설명](https://주소) 형식으로 입력하면 상세 보기에서 설명에 링크가 연결됩니다."
           />
           <label className="block text-sm font-medium text-slate-700">
             사진 파일 첨부
@@ -681,11 +694,18 @@ function getInitialSection(
 }
 
 function formatInitialDetails(details: Record<string, unknown> | undefined) {
-  if (details === undefined || Object.keys(details).length === 0) {
+  if (details === undefined) {
     return '';
   }
 
-  return JSON.stringify(details, null, 2);
+  const visibleDetails = { ...details };
+  delete visibleDetails[sourceLinkLabelKey];
+
+  if (Object.keys(visibleDetails).length === 0) {
+    return '';
+  }
+
+  return JSON.stringify(visibleDetails, null, 2);
 }
 
 function parseDetails(details: string): Record<string, unknown> {
@@ -704,6 +724,55 @@ function parseDetails(details: string): Record<string, unknown> {
   }
 
   return {};
+}
+
+function getInitialSourceLinkText(
+  sourceUrl: string | null | undefined,
+  details: Record<string, unknown> | undefined,
+) {
+  if (sourceUrl === null || sourceUrl === undefined || sourceUrl.length === 0) {
+    return '';
+  }
+
+  const label = details?.[sourceLinkLabelKey];
+  return typeof label === 'string' && label.trim().length > 0
+    ? `[${label.trim()}](${sourceUrl})`
+    : sourceUrl;
+}
+
+function parseSourceLinkInput(value: string) {
+  const normalized = normalizeOptionalText(value);
+  if (normalized === null) {
+    return { url: null, label: null };
+  }
+
+  const markdownMatch = normalized.match(/^\[([^\]\r\n]+)\]\((https?:\/\/[^\s)]+)\)$/i);
+  if (markdownMatch !== null) {
+    const label = markdownMatch[1].trim();
+    return label.length > 0
+      ? { url: markdownMatch[2], label }
+      : null;
+  }
+
+  if (normalized.startsWith('[')) {
+    return null;
+  }
+
+  return { url: normalized, label: null };
+}
+
+function withSourceLinkLabel(
+  details: Record<string, unknown>,
+  label: string | null,
+) {
+  const nextDetails = { ...details };
+  delete nextDetails[sourceLinkLabelKey];
+
+  if (label !== null) {
+    nextDetails[sourceLinkLabelKey] = label;
+  }
+
+  return nextDetails;
 }
 
 function getInitialDetailText(

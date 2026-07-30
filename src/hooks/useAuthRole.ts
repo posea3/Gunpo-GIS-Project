@@ -97,6 +97,7 @@ export function useAuthRole() {
   const authStatus = authRole.status;
   const session = authRole.session;
   const sessionUserId = session?.user.id;
+  const sessionAccessToken = session?.access_token;
 
   useEffect(() => {
     if (authStatus !== 'authenticated' || session === null) {
@@ -156,7 +157,7 @@ export function useAuthRole() {
     return () => {
       isActive = false;
     };
-  }, [authStatus, session, sessionUserId]);
+  }, [authStatus, sessionAccessToken, sessionUserId]);
 
   const signOut = useCallback(async () => {
     if (supabase === null) {

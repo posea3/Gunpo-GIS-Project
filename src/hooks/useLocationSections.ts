@@ -20,6 +20,7 @@ interface LocationSectionsState {
 }
 
 const fieldTypes = ['text', 'textarea', 'number', 'date', 'url'] as const;
+const authenticatedRoleResolutionDelayMs = 300;
 
 export function useLocationSections(authRole: AuthRoleState): LocationSectionsState {
   const [sections, setSections] = useState<LocationSectionWithFields[]>([]);
@@ -29,6 +30,10 @@ export function useLocationSections(authRole: AuthRoleState): LocationSectionsSt
   const requestSeqRef = useRef(0);
   const previousAccessScope = useRef<'none' | 'public' | 'admin'>('none');
   const accessScope = getSectionAccessScope(authRole);
+  const fetchDelayMs =
+    authRole.status === 'authenticated'
+      ? authenticatedRoleResolutionDelayMs
+      : 0;
 
   const refetch = useCallback(() => {
     setReloadKey((current) => current + 1);
@@ -100,8 +105,12 @@ export function useLocationSections(authRole: AuthRoleState): LocationSectionsSt
       setIsLoading(false);
     }
 
-    void loadSections();
-  }, [accessScope, reloadKey]);
+    const timeoutId = window.setTimeout(() => {
+      void loadSections();
+    }, fetchDelayMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [accessScope, fetchDelayMs, reloadKey]);
 
   const sectionsByCategory = useMemo(() => {
     const nextSectionsByCategory: SectionByCategory = {};

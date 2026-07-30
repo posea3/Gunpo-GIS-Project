@@ -2,6 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+.polygon-label-anchor {
+  background: transparent;
+  border: 0;
+}
+
+.polygon-project-badge {
+  display: inline-block;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 14rem;
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 25%);
+  pointer-events: none;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.polygon-project-badge__name {
+  display: block;
+  box-sizing: border-box;
+  border-radius: 3px 3px 0 0;
+  background: #1677ff;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  padding: 0.2rem 0.55rem;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.polygon-project-badge__status {
+  display: block;
+  border: 1px solid #1677ff;
+  border-top: 0;
+  border-radius: 0 0 3px 3px;
+  background: white;
+  color: #334155;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1rem;
+  padding: 0.08rem 0.45rem;
+  white-space: nowrap;
+}
+
 :root {
   font-family:
     Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -24,6 +69,11 @@ body {
 #root {
   height: 100vh;
   min-height: 100vh;
+}
+
+.location-list-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 5.5rem;
 }
 
 .place-marker span,

@@ -33,6 +33,42 @@ export async function geocodeVworldAddress(
   return null;
 }
 
+export async function reverseGeocodeVworldPoint(
+  longitude: number,
+  latitude: number,
+  apiKey: string,
+): Promise<string | null> {
+  const url = new URL('https://api.vworld.kr/req/address');
+  url.searchParams.set('service', 'address');
+  url.searchParams.set('request', 'getaddress');
+  url.searchParams.set('version', '2.0');
+  url.searchParams.set('crs', 'EPSG:4326');
+  url.searchParams.set('point', `${longitude},${latitude}`);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('errorformat', 'json');
+  url.searchParams.set('type', 'BOTH');
+  url.searchParams.set('zipcode', 'false');
+  url.searchParams.set('simple', 'false');
+  url.searchParams.set('key', apiKey);
+
+  const abortController = new AbortController();
+  const timeoutId = window.setTimeout(() => abortController.abort(), geocodeTimeoutMs);
+
+  try {
+    const payload = await requestVworldFetch(url, abortController.signal);
+    return parseVworldGetAddressPayload(payload);
+  } catch {
+    try {
+      const payload = await requestVworldJsonp(url);
+      return parseVworldGetAddressPayload(payload);
+    } catch {
+      return null;
+    }
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 function getGunpoQueryCandidates(query: string) {
   const normalizedQuery = normalizeGunpoQuery(query);
   const candidates = [normalizedQuery];
@@ -189,7 +225,7 @@ function parseVworldGetCoordPayload(
     return null;
   }
 
-  const result = getObjectProperty(response, 'result');
+  const result = getUnknownProperty(response, 'result');
   const point = getObjectProperty(result, 'point');
   const longitude = Number(getStringProperty(point, 'x'));
   const latitude = Number(getStringProperty(point, 'y'));
@@ -210,6 +246,26 @@ function parseVworldGetCoordPayload(
   };
 }
 
+function parseVworldGetAddressPayload(payload: unknown): string | null {
+  const response = getObjectProperty(payload, 'response');
+
+  if (getStringProperty(response, 'status') !== 'OK') {
+    return null;
+  }
+
+  const result = getUnknownProperty(response, 'result');
+  const items = Array.isArray(result) ? result : [];
+
+  for (const item of items) {
+    const address = getStringProperty(item, 'text');
+    if (address !== null && address.trim().length > 0) {
+      return address.trim();
+    }
+  }
+
+  return null;
+}
+
 function getObjectProperty(value: unknown, key: string) {
   if (!isRecord(value)) {
     return null;
@@ -217,6 +273,10 @@ function getObjectProperty(value: unknown, key: string) {
 
   const property = value[key];
   return isRecord(property) ? property : null;
+}
+
+function getUnknownProperty(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined;
 }
 
 function getStringProperty(value: unknown, key: string) {

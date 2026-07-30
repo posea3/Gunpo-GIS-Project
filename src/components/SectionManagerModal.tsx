@@ -23,7 +23,6 @@ import { normalizeOptionalText } from '../utils/geojson';
 
 interface SectionManagerModalProps {
   isOpen: boolean;
-  mode: 'create' | 'manage';
   sections: readonly LocationSectionWithFields[];
   groups: readonly LocationGroup[];
   isLoading: boolean;
@@ -57,7 +56,6 @@ const fieldSchema = z.object({
 
 export function SectionManagerModal({
   isOpen,
-  mode,
   sections,
   groups,
   isLoading,
@@ -71,6 +69,8 @@ export function SectionManagerModal({
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [fieldsSectionId, setFieldsSectionId] = useState<string | null>(null);
   const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const showLegacySectionList = draggedSectionId === '__legacy_section_list__';
 
   const selectedSection = useMemo(
     () => getSelectedSection(sections, selectedSectionId),
@@ -80,6 +80,22 @@ export function SectionManagerModal({
     () => sections.find((section) => section.id === fieldsSectionId) ?? null,
     [fieldsSectionId, sections],
   );
+  const sectionGroups = useMemo(() => {
+    const knownGroupIds = new Set(groups.map((group) => group.id));
+    const grouped = groups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      color: group.color,
+      sections: sections.filter((section) => section.groupId === group.id),
+    }));
+    const unassignedSections = sections.filter(
+      (section) => section.groupId === null || !knownGroupIds.has(section.groupId),
+    );
+
+    return unassignedSections.length > 0
+      ? [...grouped, { id: 'unassigned', label: 'Unassigned', color: '#94a3b8', sections: unassignedSections }]
+      : grouped;
+  }, [groups, sections]);
 
   useEffect(() => {
     if (selectedSectionId !== null && selectedSection === null) {
@@ -90,6 +106,7 @@ export function SectionManagerModal({
   if (!isOpen) {
     return null;
   }
+  const mode = isCreateFormOpen ? 'create' : 'manage';
 
   const setRequestError = (action: string, message: string) => {
     setFormErrorMessage(`${action}에 실패했습니다: ${message}`);
@@ -165,10 +182,8 @@ export function SectionManagerModal({
       }
 
       setNewSection(newSectionInput());
+      setIsCreateFormOpen(false);
       onChanged();
-      if (mode === 'create') {
-        onClose();
-      }
     } finally {
       setPendingAction(null);
     }
@@ -369,12 +384,17 @@ export function SectionManagerModal({
   };
 
   const moveSection = (sectionId: string, direction: -1 | 1) => {
-    const index = sections.findIndex((section) => section.id === sectionId);
-    const targetIndex = index + direction;
-    if (index < 0 || targetIndex < 0 || targetIndex >= sections.length) {
+    const section = sections.find((candidate) => candidate.id === sectionId);
+    if (section === undefined) {
       return;
     }
-    void saveSectionOrder(moveItem(sections, index, targetIndex));
+    const peerSections = sections.filter((candidate) => candidate.groupId === section.groupId);
+    const index = peerSections.findIndex((candidate) => candidate.id === sectionId);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= peerSections.length) {
+      return;
+    }
+    void saveSectionOrder(moveItem(peerSections, index, targetIndex));
   };
 
   const handleSectionDrop = (targetId: string) => {
@@ -382,11 +402,21 @@ export function SectionManagerModal({
       setDraggedSectionId(null);
       return;
     }
-    const sourceIndex = sections.findIndex((section) => section.id === draggedSectionId);
-    const targetIndex = sections.findIndex((section) => section.id === targetId);
+    const sourceSection = sections.find((section) => section.id === draggedSectionId);
+    const targetSection = sections.find((section) => section.id === targetId);
     setDraggedSectionId(null);
+    if (sourceSection === undefined || targetSection === undefined) {
+      return;
+    }
+    if (sourceSection.groupId !== targetSection.groupId) {
+      setFormErrorMessage('다른 분야로 옮기려면 섹션 편집에서 소속 분야를 변경한 뒤 저장하세요.');
+      return;
+    }
+    const peerSections = sections.filter((section) => section.groupId === sourceSection.groupId);
+    const sourceIndex = peerSections.findIndex((section) => section.id === sourceSection.id);
+    const targetIndex = peerSections.findIndex((section) => section.id === targetSection.id);
     if (sourceIndex >= 0 && targetIndex >= 0) {
-      void saveSectionOrder(moveItem(sections, sourceIndex, targetIndex));
+      void saveSectionOrder(moveItem(peerSections, sourceIndex, targetIndex));
     }
   };
 
@@ -413,6 +443,11 @@ export function SectionManagerModal({
           {isLoading ? <p className="text-sm text-slate-500">섹션 정보를 불러오는 중입니다.</p> : null}
           {errorMessage !== null ? <StatusMessage message={errorMessage} /> : null}
           {formErrorMessage !== null ? <StatusMessage message={formErrorMessage} /> : null}
+          {mode === 'manage' ? (
+            <button type="button" className="mb-3 inline-flex h-8 items-center gap-1 rounded-md bg-slate-900 px-2.5 text-xs font-semibold text-white hover:bg-slate-800" onClick={() => setIsCreateFormOpen(true)} disabled={pendingAction !== null}>
+              <Plus className="size-3.5" /> 새 섹션
+            </button>
+          ) : null}
 
           {mode === 'create' ? (
             <form className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4" onSubmit={createSection}>
@@ -426,7 +461,7 @@ export function SectionManagerModal({
             </form>
           ) : null}
 
-          {mode === 'manage' ? (
+          {showLegacySectionList ? (
             <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
               <nav className="max-h-[52vh] overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2" aria-label="섹션 목록">
                 {sections.map((section, index) => {
@@ -457,6 +492,63 @@ export function SectionManagerModal({
 
               {selectedSection === null ? (
                 <p className="rounded-md border border-slate-200 p-4 text-sm text-slate-500">선택할 섹션이 없습니다.</p>
+              ) : (
+                <SectionEditor
+                  key={selectedSection.id}
+                  section={selectedSection}
+                  groups={groups}
+                  isBusy={pendingAction !== null}
+                  onSave={saveSection}
+                  onDelete={deleteSection}
+                  onOpenFields={() => setFieldsSectionId(selectedSection.id)}
+                  onValidationError={setFormErrorMessage}
+                />
+              )}
+            </div>
+          ) : null}
+
+          {mode === 'manage' ? (
+            <div className="grid gap-4 md:grid-cols-[200px_minmax(0,1fr)]">
+              <nav className="max-h-[52vh] overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2" aria-label="Section groups">
+                {sectionGroups.map((group) => (
+                  <section key={group.id} className="mb-3 overflow-hidden rounded-md border border-slate-200 bg-white last:mb-0">
+                    <header className="flex items-center gap-2 border-l-4 bg-slate-100 px-2 py-1.5" style={{ borderLeftColor: group.color }}>
+                      <span className="size-2 rounded-full" style={{ backgroundColor: group.color }} />
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{group.label}</span>
+                      <span className="text-[11px] text-slate-500">{group.sections.length}</span>
+                    </header>
+                    <div className="p-1">
+                      {group.sections.map((section, index) => {
+                        const isSelected = selectedSection?.id === section.id;
+                        return (
+                          <div
+                            key={section.id}
+                            className={`mb-1 flex items-center gap-1 rounded-md last:mb-0 ${isSelected ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                            draggable={pendingAction === null}
+                            onDragStart={() => setDraggedSectionId(section.id)}
+                            onDragEnd={() => setDraggedSectionId(null)}
+                            onDragOver={(event: DragEvent<HTMLDivElement>) => event.preventDefault()}
+                            onDrop={() => handleSectionDrop(section.id)}
+                          >
+                            <GripVertical className="ml-1 size-4 shrink-0 opacity-50" aria-hidden="true" />
+                            <button type="button" className="flex min-w-0 flex-1 items-center gap-2 px-1 py-2 text-left text-sm" onClick={() => setSelectedSectionId(section.id)}>
+                              <span className="size-2.5 rounded-full" style={{ backgroundColor: section.color }} />
+                              <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                            </button>
+                            <div className="mr-1 flex flex-col">
+                              <button type="button" className="p-0.5 disabled:opacity-30" aria-label={`${section.label} move up`} disabled={pendingAction !== null || index === 0} onClick={() => moveSection(section.id, -1)}><ArrowUp className="size-3" /></button>
+                              <button type="button" className="p-0.5 disabled:opacity-30" aria-label={`${section.label} move down`} disabled={pendingAction !== null || index === group.sections.length - 1} onClick={() => moveSection(section.id, 1)}><ArrowDown className="size-3" /></button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </nav>
+
+              {selectedSection === null ? (
+                <p className="rounded-md border border-slate-200 p-4 text-sm text-slate-500">선택된 섹션이 없습니다.</p>
               ) : (
                 <SectionEditor
                   key={selectedSection.id}

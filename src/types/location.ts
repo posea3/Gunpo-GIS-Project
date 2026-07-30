@@ -7,13 +7,43 @@ export type BuiltInLocationCategory =
 
 export type LocationCategory = string;
 
-export type RedevelopmentStatus =
+export type LegacyRedevelopmentStatus =
   | '추진위승인'
   | '조합설립'
   | '사업시행인가'
   | '관리처분인가'
   | '착공'
   | '준공';
+
+export type RedevelopmentStatus =
+  | '안전진단 완료'
+  | '정비계획 수립'
+  | '정비구역 지정'
+  | '조합설립인가'
+  | '사업시행자 지정'
+  | '시공자선정'
+  | '사업시행계획인가'
+  | '관리처분계획인가'
+  | '이주'
+  | '착공'
+  | '추진위승인'
+  | '조합설립'
+  | '사업시행인가'
+  | '관리처분인가'
+  | '준공';
+
+export const redevelopmentStatuses = [
+  '안전진단 완료',
+  '정비계획 수립',
+  '정비구역 지정',
+  '조합설립인가',
+  '사업시행자 지정',
+  '시공자선정',
+  '사업시행계획인가',
+  '관리처분계획인가',
+  '이주',
+  '착공',
+] as const satisfies readonly RedevelopmentStatus[];
 
 export type SupportedGeometry = Point | Polygon | MultiPolygon;
 

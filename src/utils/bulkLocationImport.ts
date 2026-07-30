@@ -4,6 +4,7 @@ import type { Point } from 'geojson';
 import type { LocationWritePayload } from './locationPersistence';
 import { parseGeometry } from './geojson';
 import type { LocationSectionWithFields } from '../types/section';
+import { redevelopmentStatuses } from '../types/location';
 
 const MAX_IMPORT_ROWS = 400;
 const requiredHeaders = ['이름', '주소'] as const;
@@ -13,7 +14,7 @@ const reservedHeaders = new Set([
   '발행',
   '진행 단계',
 ]);
-const redevelopmentStatuses = [
+const legacyRedevelopmentStatuses = [
   '추진위승인',
   '조합설립',
   '사업시행인가',

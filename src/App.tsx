@@ -9,7 +9,6 @@ import {
   LogIn,
   LogOut,
   Pencil,
-  Plus,
   Search,
   Settings2,
   Trash2,
@@ -27,6 +26,7 @@ import { useLocations } from './hooks/useLocations';
 import { useLocationSections } from './hooks/useLocationSections';
 import { useLocationGroups } from './hooks/useLocationGroups';
 import { supabase, supabaseConfigState, vworldApiKey } from './lib/supabase';
+import { GunpoMap } from './map/GunpoMap';
 import type {
   Location,
   LocationCreateDraft,
@@ -43,14 +43,13 @@ import {
 } from './utils/locationPersistence';
 import { geocodeVworldAddress } from './utils/vworld';
 
-const GunpoMap = lazy(() =>
-  import('./map/GunpoMap').then((module) => ({ default: module.GunpoMap })),
-);
 const BulkLocationImportModal = lazy(() =>
   import('./components/BulkLocationImportModal').then((module) => ({
     default: module.BulkLocationImportModal,
   })),
 );
+
+const initialLocationListPageSize = 50;
 
 export function App() {
   const { authRole, signOut } = useAuthRole();
@@ -74,9 +73,6 @@ export function App() {
   const [isSectionManagerOpen, setIsSectionManagerOpen] = useState(false);
   const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
-  const [sectionModalMode, setSectionModalMode] = useState<'create' | 'manage'>(
-    'manage',
-  );
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('all');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('all');
@@ -361,8 +357,7 @@ export function App() {
       </header>
 
       <section className="relative min-h-0 flex-1">
-        <Suspense fallback={<MapLoadingFallback />}>
-          <GunpoMap
+        <GunpoMap
             locations={filteredLocations}
             revision={revision}
             isAdmin={isAdmin}
@@ -374,8 +369,7 @@ export function App() {
             onExternalCreateConsumed={() => setExternalCreateDraft(null)}
             sections={sections}
             sectionsByCategory={sectionsByCategory}
-          />
-        </Suspense>
+        />
 
         <div className="pointer-events-none absolute left-3 top-3 z-[650] flex flex-wrap gap-2">
           <div className="pointer-events-auto hidden gap-2 rounded-md border border-slate-200 bg-white p-1 shadow-md md:flex">
@@ -441,14 +435,7 @@ export function App() {
               setEditingLocation(location);
             }}
             onDeleteLocation={setDeletingLocation}
-            onOpenCreateSection={() => {
-              setSectionModalMode('create');
-              setIsSectionManagerOpen(true);
-            }}
-            onOpenSectionManager={() => {
-              setSectionModalMode('manage');
-              setIsSectionManagerOpen(true);
-            }}
+            onOpenSectionManager={() => setIsSectionManagerOpen(true)}
             onOpenGroupManager={() => setIsGroupManagerOpen(true)}
             onOpenBulkImport={() => setIsBulkImportOpen(true)}
             onClose={() => setIsPanelOpen(false)}
@@ -478,6 +465,24 @@ export function App() {
       <LocationDetailModal
         location={selectedLocation}
         sections={sections}
+        isAdmin={isAdmin}
+        onEdit={
+          isAdmin && selectedLocation !== null
+            ? () => {
+              setEditErrorMessage(null);
+              setEditingLocation(selectedLocation);
+              setSelectedLocation(null);
+            }
+            : undefined
+        }
+        onDelete={
+          isAdmin && selectedLocation !== null
+            ? () => {
+              setDeletingLocation(selectedLocation);
+              setSelectedLocation(null);
+            }
+            : undefined
+        }
         onClose={() => setSelectedLocation(null)}
       />
       <GroupManagerModal isOpen={isGroupManagerOpen} groups={groups} onChanged={() => { refetchGroups(); refetchSections(); }} onClose={() => setIsGroupManagerOpen(false)} />
@@ -503,7 +508,6 @@ export function App() {
       />
       <SectionManagerModal
         isOpen={isSectionManagerOpen}
-        mode={sectionModalMode}
         sections={sections}
         groups={groups}
         isLoading={isSectionsLoading}
@@ -554,7 +558,6 @@ function LocationExplorerPanel({
   onSelectLocation,
   onEditLocation,
   onDeleteLocation,
-  onOpenCreateSection,
   onOpenSectionManager,
   onOpenGroupManager,
   onOpenBulkImport,
@@ -574,7 +577,6 @@ function LocationExplorerPanel({
   onSelectLocation: (location: Location) => void;
   onEditLocation: (location: Location) => void;
   onDeleteLocation: (location: Location) => void;
-  onOpenCreateSection: () => void;
   onOpenSectionManager: () => void;
   onOpenGroupManager: () => void;
   onOpenBulkImport: () => void;
@@ -582,6 +584,16 @@ function LocationExplorerPanel({
   panelRef: RefObject<HTMLElement>;
   sectionsByCategory: SectionByCategory;
 }) {
+  const [visibleLocationCount, setVisibleLocationCount] = useState(
+    initialLocationListPageSize,
+  );
+  const visibleLocations = locations.slice(0, visibleLocationCount);
+  const hasMoreLocations = visibleLocations.length < locations.length;
+
+  useEffect(() => {
+    setVisibleLocationCount(initialLocationListPageSize);
+  }, [locations]);
+
   return (
     <aside
       ref={panelRef}
@@ -627,10 +639,10 @@ function LocationExplorerPanel({
               <button type="button" className="inline-flex h-8 items-center gap-1 rounded-md border border-blue-200 bg-white px-2.5 font-semibold text-blue-800 hover:bg-blue-100" onClick={onOpenGroupManager}><FolderTree className="size-3.5" />분야 관리</button>
               <button
                 type="button"
-                className="inline-flex h-8 items-center gap-1 rounded-md border border-blue-200 bg-white px-2.5 font-semibold text-blue-800 hover:bg-blue-100"
-                onClick={onOpenCreateSection}
+                className="hidden"
+                onClick={onOpenSectionManager}
               >
-                <Plus className="size-3.5" />
+                <Settings2 className="size-3.5" />
                 새 섹션
               </button>
               <button
@@ -689,8 +701,8 @@ function LocationExplorerPanel({
               </span>
             </div>
             <ul className="divide-y divide-slate-100">
-              {locations.map((location) => (
-                <li key={location.id}>
+              {visibleLocations.map((location) => (
+                <li key={location.id} className="location-list-item">
                   <div className="px-4 py-3 hover:bg-slate-50">
                     <div className="flex items-start justify-between gap-3">
                       {getLocationPhotoUrls(location.details)[0] !== undefined ? (
@@ -755,6 +767,21 @@ function LocationExplorerPanel({
                 </li>
               ))}
             </ul>
+            {hasMoreLocations ? (
+              <div className="border-t border-slate-100 p-3">
+                <button
+                  type="button"
+                  className="h-9 w-full rounded-md border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() =>
+                    setVisibleLocationCount((current) =>
+                      Math.min(current + initialLocationListPageSize, locations.length),
+                    )
+                  }
+                >
+                  위치 {Math.min(initialLocationListPageSize, locations.length - visibleLocations.length)}개 더 보기
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </div>

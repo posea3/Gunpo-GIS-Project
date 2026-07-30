@@ -1,11 +1,14 @@
 import type { Location } from '../types/location';
 import type { LocationSectionWithFields } from '../types/section';
-import { X } from 'lucide-react';
+import { Pencil, Trash2, X } from 'lucide-react';
 import { getLocationPhotoUrls } from '../utils/locationPhotos';
 
 interface LocationDetailModalProps {
   location: Location | null;
   sections: readonly LocationSectionWithFields[];
+  isAdmin: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
   onClose: () => void;
 }
 
@@ -18,6 +21,9 @@ const categoryLabels: Record<string, string> = {
 export function LocationDetailModal({
   location,
   sections,
+  isAdmin,
+  onEdit,
+  onDelete,
   onClose,
 }: LocationDetailModalProps) {
   if (location === null) {
@@ -31,6 +37,7 @@ export function LocationDetailModal({
   const categoryLabel = section?.label ?? categoryLabels[location.category] ?? location.category;
   const detailFields = section?.fields ?? [];
   const address = getDetailText(location.details, '주소');
+  const sourceLinkLabel = getDetailText(location.details, '__source_link_label');
 
   return (
     <div
@@ -93,15 +100,40 @@ export function LocationDetailModal({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {location.sourceUrl}
+                {sourceLinkLabel ?? location.sourceUrl}
               </a>
             </dd>
           </div> : null}
-          <DetailRow
-            label="시스템 수정일"
-            value={formatDateTime(location.updatedAt)}
-          />
+          {isAdmin ? (
+            <DetailRow
+              label="시스템 수정일"
+              value={formatDateTime(location.updatedAt)}
+            />
+          ) : null}
         </dl>
+
+        {isAdmin && (onEdit !== undefined || onDelete !== undefined) ? (
+          <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">
+            {onDelete !== undefined ? (
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 px-3 text-sm font-semibold text-red-700 hover:bg-red-50"
+                onClick={onDelete}
+              >
+                <Trash2 className="size-4" /> 삭제
+              </button>
+            ) : null}
+            {onEdit !== undefined ? (
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800"
+              onClick={onEdit}
+            >
+              <Pencil className="size-4" /> 편집
+            </button>
+            ) : null}
+          </div>
+        ) : null}
 
         </div>
       </article>

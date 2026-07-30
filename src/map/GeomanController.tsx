@@ -21,7 +21,7 @@ import {
   prepareLocationWriteInput,
   toLocationWritePayload,
 } from '../utils/locationPersistence';
-import { geocodeVworldAddress } from '../utils/vworld';
+import { geocodeVworldAddress, reverseGeocodeVworldPoint } from '../utils/vworld';
 import { registerLayerId, resolveLayerId } from './geomanLayerRegistry';
 import { ensureGeoman } from './setupLeaflet';
 
@@ -252,6 +252,30 @@ export function GeomanController({
       map.pm.disableDraw();
       setCreateErrorMessage(null);
       setPendingCreate({ layer: event.layer, geometry });
+
+      if (geometry.type === 'Point' && vworldApiKey !== null) {
+        const [longitude, latitude] = geometry.coordinates;
+
+        void reverseGeocodeVworldPoint(longitude, latitude, vworldApiKey).then((address) => {
+          if (!isMountedRef.current || address === null || pendingCreateLayerRef.current !== event.layer) {
+            return;
+          }
+
+          setPendingCreate((current) => {
+            if (current === null || current.layer !== event.layer) {
+              return current;
+            }
+
+            return {
+              ...current,
+              initialLocation: {
+                ...current.initialLocation,
+                details: { 주소: address },
+              },
+            };
+          });
+        });
+      }
     };
 
     const handleEditStart: L.PM.EnableEventHandler = (event) => {

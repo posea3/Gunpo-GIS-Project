@@ -38,6 +38,10 @@ export default defineConfig({
             return 'supabase';
           }
 
+          if (id.includes('/@geoman-io/leaflet-geoman-free/')) {
+            return 'geoman';
+          }
+
           if (id.includes('/xlsx/')) {
             return 'xlsx';
           }

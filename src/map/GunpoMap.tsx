@@ -1,4 +1,4 @@
-import { Edit3, MapPin, Pentagon, Trash2 } from 'lucide-react';
+import { Check, Edit3, MapPin, Pentagon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { GeoJSON, MapContainer, Polygon, TileLayer, useMap } from 'react-leaflet';
@@ -51,9 +51,7 @@ type GeomanControlMap = L.Map & {
     enableDraw: (shape: AdminDrawShape) => void;
     disableDraw: () => void;
     disableGlobalEditMode: () => void;
-    disableGlobalRemovalMode: () => void;
     toggleGlobalEditMode: () => void;
-    toggleGlobalRemovalMode: () => void;
   };
 };
 
@@ -194,6 +192,34 @@ function MapAdminToolbar({
   map: GeomanControlMap | null;
   isGeomanReady: boolean;
 }) {
+  const [activeTool, setActiveTool] = useState<AdminDrawShape | 'edit' | null>(null);
+
+  useEffect(() => {
+    if (map === null || map.pm === undefined) {
+      return;
+    }
+
+    const cancelActiveTool = () => {
+      map.pm?.disableDraw();
+      map.pm?.disableGlobalEditMode();
+      setActiveTool(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        cancelActiveTool();
+      }
+    };
+    const handleCreate = () => setActiveTool(null);
+
+    window.addEventListener('keydown', handleKeyDown);
+    map.on('pm:create', handleCreate);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      map.off('pm:create', handleCreate);
+    };
+  }, [map]);
+
   if (!isAdmin) {
     if (authStatus !== 'authenticated') {
       return null;
@@ -229,20 +255,21 @@ function MapAdminToolbar({
   const startDraw = (shape: AdminDrawShape) => {
     geoman.disableDraw();
     geoman.disableGlobalEditMode();
-    geoman.disableGlobalRemovalMode();
     geoman.enableDraw(shape);
+    setActiveTool(shape);
   };
 
-  const toggleEdit = () => {
-    geoman.disableDraw();
-    geoman.disableGlobalRemovalMode();
-    geoman.toggleGlobalEditMode();
-  };
-
-  const toggleRemoval = () => {
+  const startEdit = () => {
     geoman.disableDraw();
     geoman.disableGlobalEditMode();
-    geoman.toggleGlobalRemovalMode();
+    geoman.toggleGlobalEditMode();
+    setActiveTool('edit');
+  };
+
+  const finishEdit = () => {
+    geoman.disableDraw();
+    geoman.disableGlobalEditMode();
+    setActiveTool(null);
   };
 
   return (
@@ -253,24 +280,24 @@ function MapAdminToolbar({
         >
           <MapPin className="size-5" />
         </AdminToolButton>
-        <AdminToolButton
-          label="영역 추가"
-          onClick={() => startDraw('Polygon')}
-        >
-          <Pentagon className="size-5" />
-        </AdminToolButton>
-        <AdminToolButton
-          label="편집"
-          onClick={toggleEdit}
-        >
-          <Edit3 className="size-5" />
-        </AdminToolButton>
-        <AdminToolButton
-          label="삭제"
-          onClick={toggleRemoval}
-        >
-          <Trash2 className="size-5" />
-        </AdminToolButton>
+        <div className="group relative">
+          <AdminToolButton label="영역" onClick={() => startDraw('Polygon')}>
+            <Pentagon className="size-5" />
+          </AdminToolButton>
+          <div className="pointer-events-none absolute right-[56px] top-0 hidden w-28 flex-col gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-lg group-hover:pointer-events-auto group-hover:flex" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+            <button type="button" className="flex h-8 items-center gap-2 rounded px-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700" onClick={() => startDraw('Polygon')}>
+              <Pentagon className="size-3.5" /> 영역 추가
+            </button>
+            <button type="button" className="flex h-8 items-center gap-2 rounded px-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700" onClick={startEdit}>
+              <Edit3 className="size-3.5" /> 영역 편집
+            </button>
+          </div>
+        </div>
+        {activeTool === 'edit' ? (
+          <AdminToolButton label="편집 완료" onClick={finishEdit}>
+            <Check className="size-5" />
+          </AdminToolButton>
+        ) : null}
     </div>
   );
 }

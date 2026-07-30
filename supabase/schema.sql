@@ -85,6 +85,26 @@ create table public.locations (
   )
 );
 
+alter table public.locations
+  drop constraint locations_status_check;
+
+alter table public.locations
+  add constraint locations_status_check check (
+    status is null
+    or status in (
+      '안전진단 완료',
+      '정비계획 수립',
+      '정비구역 지정',
+      '조합설립인가',
+      '사업시행자 지정',
+      '시공자선정',
+      '사업시행계획인가',
+      '관리처분계획인가',
+      '이주',
+      '착공'
+    )
+  );
+
 create index idx_locations_category
   on public.locations(category);
 

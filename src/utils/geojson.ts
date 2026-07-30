@@ -18,6 +18,7 @@ import type {
   RedevelopmentStatus,
   SupportedGeometry,
 } from '../types/location';
+import { redevelopmentStatuses } from '../types/location';
 
 const GUNPO_BOUNDS = {
   minLongitude: 126.85,
@@ -26,14 +27,14 @@ const GUNPO_BOUNDS = {
   maxLatitude: 37.45,
 };
 
-const redevelopmentStatuses = [
+const legacyRedevelopmentStatuses = [
   '추진위승인',
   '조합설립',
   '사업시행인가',
   '관리처분인가',
   '착공',
   '준공',
-] as const satisfies readonly RedevelopmentStatus[];
+] as const;
 
 const finiteNumberSchema = z
   .number()
@@ -111,7 +112,7 @@ const locationDbRowSchema = z
     id: z.string().uuid(),
     name: z.string().min(1).max(200),
     category: z.string().regex(/^[a-z][a-z0-9_]{1,63}$/),
-    status: z.enum(redevelopmentStatuses).nullable(),
+    status: z.union([z.enum(redevelopmentStatuses), z.enum(legacyRedevelopmentStatuses)]).nullable(),
     section_id: z.string().uuid().nullable().optional(),
     is_published: z.boolean(),
     source_name: z.string().max(200).nullable(),

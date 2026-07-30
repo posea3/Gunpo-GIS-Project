@@ -58,6 +58,30 @@ begin
 end;
 $$;
 
+-- The original schema also had a separate status rule for the fixed
+-- redevelopment category. Dynamic section status validation is handled by
+-- validate_location_section_rules(), so remove only that legacy rule.
+do $$
+declare
+  legacy_constraint record;
+begin
+  for legacy_constraint in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.locations'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) like '%category = ''redevelopment''%'
+      and pg_get_constraintdef(oid) like '%status IS NOT NULL%'
+      and pg_get_constraintdef(oid) like '%status IS NULL%'
+  loop
+    execute format(
+      'alter table public.locations drop constraint if exists %I',
+      legacy_constraint.conname
+    );
+  end loop;
+end;
+$$;
+
 alter table public.locations
   drop constraint if exists locations_category_format_check;
 

@@ -21,6 +21,8 @@ const initialState: UseLocationsState = {
   revision: 0,
 };
 
+const authenticatedRoleResolutionDelayMs = 300;
+
 const locationSelectColumns = [
   'id',
   'name',
@@ -47,6 +49,10 @@ export function useLocations(authRole: AuthRoleState) {
   const requestSequence = useRef(0);
   const previousAccessScope = useRef<'none' | 'public' | 'admin'>('none');
   const accessScope = getLocationAccessScope(authRole);
+  const fetchDelayMs =
+    authRole.status === 'authenticated'
+      ? authenticatedRoleResolutionDelayMs
+      : 0;
 
   const fetchLocations = useCallback(
     async (requestId: number) => {
@@ -116,8 +122,12 @@ export function useLocations(authRole: AuthRoleState) {
       errorMessage: null,
     }));
 
-    void fetchLocations(requestId);
-  }, [accessScope, fetchLocations]);
+    const timeoutId = window.setTimeout(() => {
+      void fetchLocations(requestId);
+    }, fetchDelayMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [accessScope, fetchDelayMs, fetchLocations]);
 
   useEffect(() => {
     const previousScope = previousAccessScope.current;

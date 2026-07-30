@@ -1,5 +1,6 @@
 import L from 'leaflet';
 import type { Point } from 'geojson';
+import { useEffect, useMemo, useState } from 'react';
 import { Marker } from 'react-leaflet';
 
 import type { Location } from '../types/location';
@@ -13,16 +14,56 @@ type PointLocation = Location & {
   geometry: Point;
 };
 
+const markerRenderBatchSize = 75;
+
 export function VisitorPointMarkers({
   locations,
   onSelectLocation,
 }: VisitorPointMarkersProps) {
-  const pointLocations = locations.filter(
-    (location): location is PointLocation => location.geometry.type === 'Point',
+  const pointLocations = useMemo(
+    () =>
+      locations.filter(
+        (location): location is PointLocation => location.geometry.type === 'Point',
+      ),
+    [locations],
   );
+  const [visibleMarkerCount, setVisibleMarkerCount] = useState(0);
+
+  useEffect(() => {
+    let nextMarkerCount = Math.min(pointLocations.length, markerRenderBatchSize);
+    let animationFrameId: number | null = null;
+
+    setVisibleMarkerCount(nextMarkerCount);
+
+    const renderNextBatch = () => {
+      if (nextMarkerCount >= pointLocations.length) {
+        return;
+      }
+
+      animationFrameId = window.requestAnimationFrame(() => {
+        nextMarkerCount = Math.min(
+          nextMarkerCount + markerRenderBatchSize,
+          pointLocations.length,
+        );
+        setVisibleMarkerCount(nextMarkerCount);
+        renderNextBatch();
+      });
+    };
+
+    renderNextBatch();
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [pointLocations]);
+
+  const visiblePointLocations = pointLocations.slice(0, visibleMarkerCount);
+
   return (
     <>
-      {pointLocations.map((location) => (
+      {visiblePointLocations.map((location) => (
         <Marker
           key={location.id}
           position={toLatLng(location.geometry.coordinates)}
