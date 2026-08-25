@@ -352,9 +352,13 @@ export function App() {
             alt="군포시 로고"
             className="h-11 w-[58px] rounded-sm object-cover"
           />
-          <div className="hidden leading-tight sm:block">
-            <p className="text-base font-bold text-slate-950">군포잇다</p>
-            <p className="text-xs text-slate-500">생활정보 한눈에 - 군포시 지역지도</p>
+          <div className="min-w-0 leading-tight">
+            <p className="whitespace-nowrap text-sm font-bold text-slate-950 sm:text-base">
+              군포잇다
+            </p>
+            <p className="hidden text-xs text-slate-500 sm:block">
+              생활정보 한눈에 - 군포시 지역지도
+            </p>
           </div>
         </div>
 
@@ -701,7 +705,7 @@ function LocationExplorerPanel({
           <div>
             <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-blue-700">
               <ListFilter className="size-3.5" />
-              Locations
+              위치 정보
             </p>
             <h2 className="mt-1 text-base font-semibold text-slate-950">
               군포 지역 정보
@@ -819,7 +823,7 @@ function LocationExplorerPanel({
           <p className="px-4 py-5 text-sm text-slate-500">
             위치 정보를 불러오는 중입니다.
           </p>
-        ) : locations.length === 0 ? (
+        ) : locationsErrorMessage !== null ? null : locations.length === 0 ? (
           <p className="px-4 py-5 text-sm text-slate-500">
             표시할 위치 정보가 없습니다.
           </p>
