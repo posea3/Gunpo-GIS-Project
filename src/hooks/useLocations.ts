@@ -309,19 +309,16 @@ async function fetchLocationRows(
     })
     .select(selectColumns);
 
-  if (!isMissingViewportFunctionError(response.error?.message ?? '')) {
+  if (response.error === null) {
     return {
       ...response,
       usesViewportQuery: true,
     };
   }
 
-  const fallbackResponse = await supabase
-    .from('locations')
-    .select(selectColumns)
-    .order('category', { ascending: true })
-    .order('name', { ascending: true })
-    .order('updated_at', { ascending: false });
+  // The viewport RPC is an optimization only. A schema cache or function
+  // failure must not prevent visitors from seeing published locations.
+  const fallbackResponse = await fetchAllLocationRows(selectColumns);
 
   return {
     ...fallbackResponse,
@@ -348,13 +345,6 @@ async function fetchAllLocationRows(selectColumns: string) {
 function isMissingSectionIdError(message: string) {
   return (
     message.includes('section_id') &&
-    (message.includes('does not exist') || message.includes('schema cache'))
-  );
-}
-
-function isMissingViewportFunctionError(message: string) {
-  return (
-    message.includes('get_locations_in_bounds') &&
     (message.includes('does not exist') || message.includes('schema cache'))
   );
 }
